@@ -54,8 +54,6 @@ import androidx.compose.material.icons.filled.VolumeOff
 @Composable
 fun HeaderBar(
     currentMode: WormMode,
-    ttsEnabled: Boolean,
-    onToggleTts: () -> Unit,
     onOpenModeSelector: () -> Unit,
     onOpenHistory: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -215,20 +213,7 @@ fun HeaderBar(
                 )
             }
 
-            IconButton(
-                onClick = onToggleTts,
-                modifier = Modifier
-                    .padding(end = 2.dp)
-                    .size(38.dp)
-                    .background(Color(0xFF18181B), CircleShape)
-            ) {
-                Icon(
-                    imageVector = if (ttsEnabled) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
-                    contentDescription = "Toggle TTS Voice",
-                    tint = if (ttsEnabled) WormGptRedAccent else Color(0xFFA1A1AA),
-                    modifier = Modifier.size(20.dp)
-                )
-            }
+
 
             IconButton(
                 onClick = onOpenSettings,

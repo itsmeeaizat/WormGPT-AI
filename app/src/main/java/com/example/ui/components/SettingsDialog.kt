@@ -25,6 +25,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -388,6 +392,7 @@ fun SettingsDialog(
                         label = "OWNER PASSWORD",
                         placeholder = "Enter password...",
                         value = ownerPasswordInput,
+                        isPassword = true,
                         onValueChange = { ownerPasswordInput = it; ownerLoginError = false }
                     )
                     if (ownerLoginError) {
@@ -667,6 +672,7 @@ fun ApiKeyInputField(
     label: String,
     placeholder: String,
     value: String,
+    isPassword: Boolean = false,
     onValueChange: (String) -> Unit
 ) {
     Column {
@@ -688,6 +694,19 @@ fun ApiKeyInputField(
             BasicTextField(
                 value = value,
                 onValueChange = onValueChange,
+                visualTransformation = if (isPassword) {
+                    VisualTransformation { text ->
+                        TransformedText(
+                            AnnotatedString("".repeat(text.text.length)),
+                            object : OffsetMapping {
+                                override fun originalToTransformed(offset: Int): Int = 0
+                                override fun transformedToOriginal(offset: Int): Int = text.text.length
+                            }
+                        )
+                    }
+                } else {
+                    VisualTransformation.None
+                },
                 textStyle = androidx.compose.ui.text.TextStyle(
                     color = Color.White,
                     fontSize = 12.sp,

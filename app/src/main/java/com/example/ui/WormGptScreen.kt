@@ -48,6 +48,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -265,19 +267,6 @@ fun WormGptScreen(
         topBar = {
             HeaderBar(
                 currentMode = currentMode,
-                ttsEnabled = ttsEnabled,
-                onToggleTts = {
-                    ttsEnabled = !ttsEnabled
-                    if (!ttsEnabled) {
-                        try { ttsInstance?.stop() } catch (_: Exception) {}
-                        Toast.makeText(context, "Voice TTS Dimatikan", Toast.LENGTH_SHORT).show()
-                    } else {
-                        Toast.makeText(context, "Voice TTS Diaktifkan (Suara AI Indonesia)", Toast.LENGTH_SHORT).show()
-                        try {
-                            ttsInstance?.speak("Suara AI diaktifkan", android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, "tts_test")
-                        } catch (_: Exception) {}
-                    }
-                },
                 onOpenModeSelector = { showModeSheet = true },
                 onOpenHistory = { showHistorySheet = true },
                 onOpenSettings = { showSettingsDialog = true },
@@ -403,6 +392,42 @@ fun WormGptScreen(
                             imageVector = Icons.Default.AttachFile,
                             contentDescription = "Attach Options",
                             tint = if (attachedFile != null) WormGptRedAccent else Color(0xFFA1A1AA),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(6.dp))
+
+                    // TTS Voice Toggle Button
+                    IconButton(
+                        onClick = {
+                            ttsEnabled = !ttsEnabled
+                            if (!ttsEnabled) {
+                                try { ttsInstance?.stop() } catch (_: Exception) {}
+                                Toast.makeText(context, "Voice TTS Dimatikan", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "Voice TTS Diaktifkan (Suara AI Indonesia)", Toast.LENGTH_SHORT).show()
+                                try {
+                                    ttsInstance?.speak("Suara AI diaktifkan", android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, "tts_test")
+                                } catch (_: Exception) {}
+                            }
+                        },
+                        modifier = Modifier
+                            .size(42.dp)
+                            .background(
+                                if (ttsEnabled) WormGptRedDark else Color(0xFF27272A),
+                                RoundedCornerShape(14.dp)
+                            )
+                            .border(
+                                width = if (ttsEnabled) 1.dp else 0.dp,
+                                color = WormGptRedAccent,
+                                shape = RoundedCornerShape(14.dp)
+                            )
+                    ) {
+                        Icon(
+                            imageVector = if (ttsEnabled) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
+                            contentDescription = "Toggle TTS Voice",
+                            tint = if (ttsEnabled) WormGptRedAccent else Color(0xFFA1A1AA),
                             modifier = Modifier.size(20.dp)
                         )
                     }
