@@ -106,6 +106,7 @@ fun WormGptScreen(
     val openRouterApiKey by viewModel.openRouterApiKey.collectAsStateWithLifecycle()
     val mistralApiKey by viewModel.mistralApiKey.collectAsStateWithLifecycle()
     val selectedModel by viewModel.selectedModel.collectAsStateWithLifecycle()
+    val customModels by viewModel.customModels.collectAsStateWithLifecycle()
     val attachedFile by viewModel.attachedFile.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
@@ -174,6 +175,74 @@ fun WormGptScreen(
     var showAttachmentMenuSheet by remember { mutableStateOf(false) }
     var showPermissionsDialog by remember { mutableStateOf(false) }
 
+    // Text-to-Speech (TTS) Indonesian Female Voice Setup
+    var ttsEnabled by remember { mutableStateOf(false) }
+    var ttsInstance by remember { mutableStateOf<android.speech.tts.TextToSpeech?>(null) }
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        ttsInstance = android.speech.tts.TextToSpeech(context) { status ->
+            if (status == android.speech.tts.TextToSpeech.SUCCESS) {
+                val tts = ttsInstance ?: return@TextToSpeech
+                var res = tts.setLanguage(java.util.Locale("id", "ID"))
+                if (res == android.speech.tts.TextToSpeech.LANG_MISSING_DATA || res == android.speech.tts.TextToSpeech.LANG_NOT_SUPPORTED) {
+                    res = tts.setLanguage(java.util.Locale("in", "ID"))
+                }
+                if (res == android.speech.tts.TextToSpeech.LANG_MISSING_DATA || res == android.speech.tts.TextToSpeech.LANG_NOT_SUPPORTED) {
+                    res = tts.setLanguage(java.util.Locale("id"))
+                }
+                if (res == android.speech.tts.TextToSpeech.LANG_MISSING_DATA || res == android.speech.tts.TextToSpeech.LANG_NOT_SUPPORTED) {
+                    tts.setLanguage(java.util.Locale.getDefault())
+                }
+                try {
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                        val voices = tts.voices
+                        if (voices != null) {
+                            val femaleVoice = voices.firstOrNull { 
+                                it.locale.language.equals("id", ignoreCase = true) && 
+                                (it.name.lowercase().contains("female") || it.name.lowercase().contains("id-id") || it.name.lowercase().contains("wavenet") || it.name.lowercase().contains("id_id"))
+                            } ?: voices.firstOrNull { it.locale.language.equals("id", ignoreCase = true) }
+                            if (femaleVoice != null) {
+                                tts.voice = femaleVoice
+                            }
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose {
+            try {
+                ttsInstance?.stop()
+                ttsInstance?.shutdown()
+            } catch (_: Exception) {}
+        }
+    }
+
+    val speakAiResponse: (String) -> Unit = { text ->
+        if (ttsEnabled && ttsInstance != null && text.isNotBlank()) {
+            try {
+                val cleanText = text.replace(Regex("```[\\s\\S]*?```"), " kode program ")
+                    .replace(Regex("[#*`_\\[\\]()]"), "")
+                ttsInstance?.speak(cleanText, android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, "tts_ai_id")
+            } catch (_: Exception) {}
+        }
+    }
+
+    var lastSpokenMessageId by remember { mutableStateOf<Long?>(null) }
+    androidx.compose.runtime.LaunchedEffect(activeMessages, isLoading) {
+        if (!isLoading && activeMessages.isNotEmpty()) {
+            val lastMessage = activeMessages.last()
+            if (lastMessage.sender == "WORM_GPT" && !lastMessage.isError && lastMessage.id != lastSpokenMessageId) {
+                lastSpokenMessageId = lastMessage.id
+                if (ttsEnabled) {
+                    speakAiResponse(lastMessage.content)
+                }
+            }
+        }
+    }
+
     val modeSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val historySheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val attachmentMenuSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -196,6 +265,19 @@ fun WormGptScreen(
         topBar = {
             HeaderBar(
                 currentMode = currentMode,
+                ttsEnabled = ttsEnabled,
+                onToggleTts = {
+                    ttsEnabled = !ttsEnabled
+                    if (!ttsEnabled) {
+                        try { ttsInstance?.stop() } catch (_: Exception) {}
+                        Toast.makeText(context, "Voice TTS Dimatikan", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Voice TTS Diaktifkan (Suara AI Indonesia)", Toast.LENGTH_SHORT).show()
+                        try {
+                            ttsInstance?.speak("Suara AI diaktifkan", android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, "tts_test")
+                        } catch (_: Exception) {}
+                    }
+                },
                 onOpenModeSelector = { showModeSheet = true },
                 onOpenHistory = { showHistorySheet = true },
                 onOpenSettings = { showSettingsDialog = true },
@@ -455,11 +537,13 @@ fun WormGptScreen(
             openRouterApiKey = openRouterApiKey,
             mistralApiKey = mistralApiKey,
             selectedModel = selectedModel,
-            onSaveApiKey = { key -> viewModel.customApiKey.value = key },
-            onSaveGroqApiKey = { key -> viewModel.groqApiKey.value = key },
-            onSaveOpenRouterApiKey = { key -> viewModel.openRouterApiKey.value = key },
-            onSaveMistralApiKey = { key -> viewModel.mistralApiKey.value = key },
-            onSaveModel = { model -> viewModel.selectedModel.value = model },
+            customModels = customModels,
+            onSaveApiKey = { key -> viewModel.saveCustomApiKey(key) },
+            onSaveGroqApiKey = { key -> viewModel.saveGroqApiKey(key) },
+            onSaveOpenRouterApiKey = { key -> viewModel.saveOpenRouterApiKey(key) },
+            onSaveMistralApiKey = { key -> viewModel.saveMistralApiKey(key) },
+            onSaveModel = { model -> viewModel.saveSelectedModel(model) },
+            onSaveCustomModels = { models -> viewModel.saveCustomModels(models) },
             onDismiss = { showSettingsDialog = false }
         )
     }

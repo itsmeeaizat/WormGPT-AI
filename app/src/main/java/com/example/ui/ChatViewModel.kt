@@ -27,6 +27,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: ChatRepository
     
+    private val sharedPreferences = application.getSharedPreferences("wormgpt_config", Context.MODE_PRIVATE)
+
     val currentMode = MutableStateFlow(WormMode.ALL_MODES[0])
     val inputPrompt = MutableStateFlow("")
     val attachedFile = MutableStateFlow<AttachedFile?>(null)
@@ -36,6 +38,49 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val openRouterApiKey = MutableStateFlow("")
     val mistralApiKey = MutableStateFlow("")
     val selectedModel = MutableStateFlow("gemini-3.5-flash")
+    val customModels = MutableStateFlow<List<com.example.data.model.CustomAiModel>>(emptyList())
+
+    fun saveCustomApiKey(key: String) {
+        customApiKey.value = key
+        sharedPreferences.edit().putString("custom_api_key", key).apply()
+    }
+
+    fun saveGroqApiKey(key: String) {
+        groqApiKey.value = key
+        sharedPreferences.edit().putString("groq_api_key", key).apply()
+    }
+
+    fun saveOpenRouterApiKey(key: String) {
+        openRouterApiKey.value = key
+        sharedPreferences.edit().putString("openrouter_api_key", key).apply()
+    }
+
+    fun saveMistralApiKey(key: String) {
+        mistralApiKey.value = key
+        sharedPreferences.edit().putString("mistral_api_key", key).apply()
+    }
+
+    fun saveSelectedModel(model: String) {
+        selectedModel.value = model
+        sharedPreferences.edit().putString("selected_model", model).apply()
+    }
+
+    fun saveCustomModels(models: List<com.example.data.model.CustomAiModel>) {
+        customModels.value = models
+        try {
+            val jsonArray = org.json.JSONArray()
+            for (m in models) {
+                val obj = org.json.JSONObject().apply {
+                    put("id", m.id)
+                    put("name", m.name)
+                    put("apiKey", m.apiKey)
+                    put("providerType", m.providerType)
+                }
+                jsonArray.put(obj)
+            }
+            sharedPreferences.edit().putString("custom_models_json", jsonArray.toString()).apply()
+        } catch (_: Exception) {}
+    }
 
     val activeSessionId = MutableStateFlow<String?>(null)
 
@@ -45,6 +90,31 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val activeMessages: StateFlow<List<ChatMessageEntity>>
 
     init {
+        // Auto-load configuration from SharedPreferences
+        customApiKey.value = sharedPreferences.getString("custom_api_key", "") ?: ""
+        groqApiKey.value = sharedPreferences.getString("groq_api_key", "") ?: ""
+        openRouterApiKey.value = sharedPreferences.getString("openrouter_api_key", "") ?: ""
+        mistralApiKey.value = sharedPreferences.getString("mistral_api_key", "") ?: ""
+        selectedModel.value = sharedPreferences.getString("selected_model", "gemini-3.5-flash") ?: "gemini-3.5-flash"
+        
+        val modelsJson = sharedPreferences.getString("custom_models_json", "[]") ?: "[]"
+        try {
+            val jsonArray = org.json.JSONArray(modelsJson)
+            val list = mutableListOf<com.example.data.model.CustomAiModel>()
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                list.add(
+                    com.example.data.model.CustomAiModel(
+                        id = obj.getString("id"),
+                        name = obj.getString("name"),
+                        apiKey = obj.getString("apiKey"),
+                        providerType = obj.getString("providerType")
+                    )
+                )
+            }
+            customModels.value = list
+        } catch (_: Exception) {}
+
         val db = WormGptDatabase.getDatabase(application)
         repository = ChatRepository(db.chatDao())
 
@@ -181,7 +251,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 groqApiKey = groqApiKey.value,
                 openRouterApiKey = openRouterApiKey.value,
                 mistralApiKey = mistralApiKey.value,
-                selectedModel = selectedModel.value
+                selectedModel = selectedModel.value,
+                customModels = customModels.value
             )
 
             result.onSuccess { replyText ->

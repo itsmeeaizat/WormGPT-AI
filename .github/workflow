@@ -1,0 +1,86 @@
+name: Build Custom Native APK & Release
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  workflow_dispatch: # Memungkinkan tombol "Run workflow" ditekan secara manual
+
+jobs:
+  build:
+    name: Build Gradle APK and Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 20
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '20'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Generate Gradle Wrapper (Version 9.3.1)
+        run: |
+          gradle wrapper --gradle-version 9.3.1
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Generate Custom Debug Keystore and Copy to Project
+        run: |
+          mkdir -p ~/.android
+          keytool -genkey -v -keystore ~/.android/debug.keystore \
+          -storepass android -alias androiddebugkey -keypass android \
+          -keyalg RSA -keysize 2048 -validity 10000 \
+          -dname "CN=Aizat, O=Personal Developer, C=ID"
+          cp ~/.android/debug.keystore ./debug.keystore
+
+      - name: Build Debug APK with Gradle
+        run: ./gradlew assembleDebug -Pkotlin.compiler.execution.strategy=in-process
+
+      - name: Rename APK
+        run: |
+          REPO_NAME="${{ github.event.repository.name }}"
+          APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          
+          if [ -f "$APK_PATH" ]; then
+            NEW_NAME="${REPO_NAME}-Aizat-debug.apk"
+            cp "$APK_PATH" "$NEW_NAME"
+            echo "APK berhasil di-rename menjadi: $NEW_NAME"
+          else
+            echo "File APK tidak ditemukan!"
+            exit 1
+          fi
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.event.repository.name }}-apk
+          path: ${{ github.event.repository.name }}-Aizat-debug.apk
+
+      - name: Release and Upload APK to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        with:
+          files: ${{ github.event.repository.name }}-Aizat-debug.apk
+          tag_name: ${{ github.ref_name == 'refs/heads/main' && 'v1.0.0-build' || github.ref_name }}
+          name: "Buat CV Professional Build (${{ github.run_number }})"
+          body: |
+            ### 📱 Buat CV Professional (Android App)
+            * **Developer:** Aizat
+            * **Build Number:** ${{ github.run_number }}
+            * **Status:** Stable Release
+            
+            ### ✨ Catatan Versi:
+            - Berhasil di-build otomatis menggunakan GitHub Actions.
+            - Silakan unduh file APK di bawah ini untuk menginstalnya langsung di perangkat Android Anda.
+          draft: false
+          prerelease: false

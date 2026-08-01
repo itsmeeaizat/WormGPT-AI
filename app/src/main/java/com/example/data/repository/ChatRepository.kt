@@ -91,8 +91,24 @@ class ChatRepository(private val chatDao: ChatDao) {
         groqApiKey: String? = null,
         openRouterApiKey: String? = null,
         mistralApiKey: String? = null,
-        selectedModel: String = "gemini-3.5-flash"
+        selectedModel: String = "gemini-3.5-flash",
+        customModels: List<com.example.data.model.CustomAiModel> = emptyList()
     ): Result<String> {
+        val customModel = customModels.find { it.id == selectedModel }
+        if (customModel != null) {
+            val key = customModel.apiKey.trim()
+            if (key.isBlank()) {
+                return Result.failure(Exception("API key untuk model kustom '${customModel.name}' belum diisi."))
+            }
+            return when (customModel.providerType.lowercase()) {
+                "groq" -> sendToOpenAiCompatibleApi("https://api.groq.com/openai/v1/chat/completions", key, customModel.id, mode.systemPrompt, conversationHistory, userPrompt)
+                "openrouter" -> sendToOpenAiCompatibleApi("https://openrouter.ai/api/v1/chat/completions", key, customModel.id, mode.systemPrompt, conversationHistory, userPrompt)
+                "mistral" -> sendToOpenAiCompatibleApi("https://api.mistral.ai/v1/chat/completions", key, customModel.id, mode.systemPrompt, conversationHistory, userPrompt)
+                "gemini" -> sendToGemini(userPrompt, conversationHistory, mode, key, customModel.id)
+                else -> sendToOpenAiCompatibleApi("https://api.openai.com/v1/chat/completions", key, customModel.id, mode.systemPrompt, conversationHistory, userPrompt)
+            }
+        }
+
         return when {
             selectedModel.startsWith("pollinations/") -> {
                 val realModel = selectedModel.removePrefix("pollinations/")

@@ -2,6 +2,7 @@ package com.example.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.BuildConfig
+import com.example.data.model.CustomAiModel
 import com.example.ui.theme.WormGptBorderRed
 import com.example.ui.theme.WormGptRedAccent
 
@@ -40,11 +42,13 @@ fun SettingsDialog(
     openRouterApiKey: String = "",
     mistralApiKey: String = "",
     selectedModel: String,
+    customModels: List<CustomAiModel> = emptyList(),
     onSaveApiKey: (String) -> Unit,
     onSaveGroqApiKey: (String) -> Unit = {},
     onSaveOpenRouterApiKey: (String) -> Unit = {},
     onSaveMistralApiKey: (String) -> Unit = {},
     onSaveModel: (String) -> Unit,
+    onSaveCustomModels: (List<CustomAiModel>) -> Unit = {},
     onDismiss: () -> Unit
 ) {
     var geminiKeyText by remember { mutableStateOf(customApiKey) }
@@ -52,6 +56,17 @@ fun SettingsDialog(
     var openRouterKeyText by remember { mutableStateOf(openRouterApiKey) }
     var mistralKeyText by remember { mutableStateOf(mistralApiKey) }
     var currentSelectedModel by remember { mutableStateOf(selectedModel) }
+    var customModelsList by remember { mutableStateOf(customModels) }
+
+    var showOwnerLogin by remember { mutableStateOf(false) }
+    var showOwnerSettings by remember { mutableStateOf(false) }
+    var ownerPasswordInput by remember { mutableStateOf("") }
+    var ownerLoginError by remember { mutableStateOf(false) }
+
+    var newModelId by remember { mutableStateOf("") }
+    var newModelName by remember { mutableStateOf("") }
+    var newModelKey by remember { mutableStateOf("") }
+    var newModelProvider by remember { mutableStateOf("Groq") }
 
     val scrollState = rememberScrollState()
 
@@ -88,6 +103,31 @@ fun SettingsDialog(
                         fontWeight = FontWeight.Bold
                     )
                 }
+
+                // Owner Settings Protected Access Button
+                Button(
+                    onClick = { showOwnerLogin = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF27272A)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        tint = WormGptRedAccent,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "🔒 Owner Settings (AizatDev123)",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
 
                 // Default secret status
                 val isSecretInjected = BuildConfig.GEMINI_API_KEY.isNotBlank() && BuildConfig.GEMINI_API_KEY != "MY_GEMINI_API_KEY"
@@ -169,6 +209,16 @@ fun SettingsDialog(
                         subtitle = "Free fallback LLM engine (No API Key needed)",
                         onClick = { currentSelectedModel = "pollinations/openai" }
                     )
+
+                    // Render custom models in selection list
+                    customModelsList.forEach { model ->
+                        ModelRadioOption(
+                            selected = currentSelectedModel == model.id,
+                            title = model.name,
+                            subtitle = "Custom ${model.providerType} Model (${model.id})",
+                            onClick = { currentSelectedModel = model.id }
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -234,6 +284,7 @@ fun SettingsDialog(
                             onSaveOpenRouterApiKey(openRouterKeyText)
                             onSaveMistralApiKey(mistralKeyText)
                             onSaveModel(currentSelectedModel)
+                            onSaveCustomModels(customModelsList)
                             onDismiss()
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = WormGptRedAccent),
@@ -301,6 +352,274 @@ fun SettingsDialog(
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold
                         )
+                    }
+                }
+            }
+        }
+    }
+
+    // Owner Login Dialog (Protected by password AizatDev123)
+    if (showOwnerLogin) {
+        Dialog(onDismissRequest = { showOwnerLogin = false }) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color(0xFF18181B))
+                    .border(1.dp, WormGptBorderRed, RoundedCornerShape(16.dp))
+                    .padding(20.dp)
+            ) {
+                Column {
+                    Text(
+                        text = "🔒 Owner Password Verification",
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Enter owner password (AizatDev123) to access Owner Settings & Dynamic Multi-Model AI.",
+                        color = Color(0xFFA1A1AA),
+                        fontSize = 12.sp
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    ApiKeyInputField(
+                        label = "OWNER PASSWORD",
+                        placeholder = "Enter password...",
+                        value = ownerPasswordInput,
+                        onValueChange = { ownerPasswordInput = it; ownerLoginError = false }
+                    )
+                    if (ownerLoginError) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "❌ Password salah! (Gunakan AizatDev123)",
+                            color = Color(0xFFEF4444),
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        TextButton(onClick = { showOwnerLogin = false }) {
+                            Text(text = "Cancel", color = Color(0xFFA1A1AA))
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(
+                            onClick = {
+                                if (ownerPasswordInput.trim() == "AizatDev123") {
+                                    showOwnerLogin = false
+                                    showOwnerSettings = true
+                                    ownerPasswordInput = ""
+                                    ownerLoginError = false
+                                } else {
+                                    ownerLoginError = true
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = WormGptRedAccent),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(text = "Login", color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Owner Settings Dialog (Synchronized API Keys & Dynamic Multi-Model AI)
+    if (showOwnerSettings) {
+        Dialog(onDismissRequest = { showOwnerSettings = false }) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.9f)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Color(0xFF18181B))
+                    .border(1.dp, WormGptBorderRed, RoundedCornerShape(18.dp))
+                    .padding(20.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    Text(
+                        text = "🛠 Owner Settings & Dynamic Multi-Model AI",
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Protected Owner Mode — Synchronized API Keys & Custom Models",
+                        color = Color(0xFFA1A1AA),
+                        fontSize = 11.sp
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Text(
+                        text = "SYNCHRONIZED API KEYS",
+                        color = Color(0xFFA1A1AA),
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    ApiKeyInputField("GEMINI API KEY", "AIzaSy...", geminiKeyText) { geminiKeyText = it }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    ApiKeyInputField("GROQ API KEY", "gsk_...", groqKeyText) { groqKeyText = it }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    ApiKeyInputField("OPENROUTER API KEY", "sk-or-...", openRouterKeyText) { openRouterKeyText = it }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    ApiKeyInputField("MISTRAL API KEY", "Mistral key...", mistralKeyText) { mistralKeyText = it }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Text(
+                        text = "DYNAMIC MULTI-MODEL AI CONFIGURATION",
+                        color = Color(0xFFA1A1AA),
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // Add Custom Model Form
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFF09090B))
+                            .border(0.5.dp, Color(0xFF27272A), RoundedCornerShape(12.dp))
+                            .padding(12.dp)
+                    ) {
+                        Text(
+                            text = "Add New Custom AI Model",
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        ApiKeyInputField("MODEL ID / ENDPOINT (e.g. groq/llama-3.1-8b)", "Model ID...", newModelId) { newModelId = it }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        ApiKeyInputField("DISPLAY NAME (e.g. Custom Llama)", "Display name...", newModelName) { newModelName = it }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        ApiKeyInputField("MODEL API KEY", "API Key for this model...", newModelKey) { newModelKey = it }
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text(text = "PROVIDER TYPE", color = Color(0xFFA1A1AA), fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf("Groq", "OpenRouter", "Mistral", "Gemini", "OpenAI").forEach { prov ->
+                                val selected = newModelProvider == prov
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(if (selected) WormGptRedAccent else Color(0xFF18181B))
+                                        .border(0.5.dp, if (selected) WormGptRedAccent else Color(0xFF3F3F46), RoundedCornerShape(6.dp))
+                                        .clickable { newModelProvider = prov }
+                                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                                ) {
+                                    Text(text = prov, color = Color.White, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(
+                            onClick = {
+                                if (newModelId.isNotBlank() && newModelName.isNotBlank()) {
+                                    val newModel = CustomAiModel(
+                                        id = newModelId.trim(),
+                                        name = newModelName.trim(),
+                                        apiKey = newModelKey.trim(),
+                                        providerType = newModelProvider
+                                    )
+                                    customModelsList = customModelsList + newModel
+                                    newModelId = ""
+                                    newModelName = ""
+                                    newModelKey = ""
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = WormGptRedAccent),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(text = "➕ Add Custom AI Model", color = Color.White, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Text(
+                        text = "ADDED CUSTOM MODELS (${customModelsList.size})",
+                        color = Color(0xFFA1A1AA),
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    if (customModelsList.isEmpty()) {
+                        Text(
+                            text = "No custom models added yet. Use the form above to add models dynamically.",
+                            color = Color(0xFF52525B),
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    } else {
+                        customModelsList.forEach { model ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0xFF09090B))
+                                    .border(0.5.dp, Color(0xFF27272A), RoundedCornerShape(8.dp))
+                                    .padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(text = model.name, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                    Text(text = "ID: ${model.id} | Provider: ${model.providerType}", color = Color(0xFFA1A1AA), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                                }
+                                TextButton(
+                                    onClick = {
+                                        customModelsList = customModelsList.filter { it.id != model.id }
+                                    }
+                                ) {
+                                    Text(text = "🗑 Delete", color = Color(0xFFEF4444), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        Button(
+                            onClick = {
+                                onSaveApiKey(geminiKeyText)
+                                onSaveGroqApiKey(groqKeyText)
+                                onSaveOpenRouterApiKey(openRouterKeyText)
+                                onSaveMistralApiKey(mistralKeyText)
+                                onSaveCustomModels(customModelsList)
+                                showOwnerSettings = false
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = WormGptRedAccent),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(text = "Apply Owner Settings", color = Color.White, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
