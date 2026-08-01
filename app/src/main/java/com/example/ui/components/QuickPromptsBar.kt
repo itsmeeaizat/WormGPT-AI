@@ -43,11 +43,6 @@ fun QuickPromptsBar(
 ) {
     val presets = listOf(
         QuickPromptItem(
-            label = "Scan Repo MrZXN777/WormGPT-",
-            promptText = "Identify vulnerabilities in the repository structure for MrZXN777/WormGPT- and highlight security risk factors.",
-            icon = Icons.Default.Code
-        ),
-        QuickPromptItem(
             label = "OWASP Top 10 Check",
             promptText = "Provide an OWASP Top 10 vulnerability inspection protocol for web and API backends.",
             icon = Icons.Default.BugReport
