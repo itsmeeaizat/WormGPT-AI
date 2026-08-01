@@ -1,6 +1,0 @@
-{
-  "name": "WormGPT",
-  "description": "Elegant Dark unrestricted security AI assistant for repository analysis, vulnerability audit, code inspection, and cybersecurity simulation.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
