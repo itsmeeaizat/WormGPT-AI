@@ -219,14 +219,37 @@ fun WormGptScreen(
         }
     }
 
-    var lastSpokenMessageId by remember { mutableStateOf<Long?>(null) }
-    androidx.compose.runtime.LaunchedEffect(activeMessages, isLoading) {
-        if (!isLoading && activeMessages.isNotEmpty()) {
-            val lastMessage = activeMessages.last()
-            if (lastMessage.sender == "WORM_GPT" && !lastMessage.isError && lastMessage.id != lastSpokenMessageId) {
-                lastSpokenMessageId = lastMessage.id
+    val handleSendMessage: (String?) -> Unit = { overridePrompt ->
+        if (ttsEnabled) {
+            aiVoiceManager.startStreamingSpeech(
+                provider = selectedVoiceProvider,
+                voiceName = selectedVoiceName,
+                elevenLabsKey = elevenLabsApiKey,
+                googleCloudKey = googleTtsApiKey,
+                speed = voiceSpeed,
+                pitch = voicePitch
+            )
+        }
+        viewModel.sendMessage(
+            overridePrompt = overridePrompt,
+            onChunkReceived = { chunk ->
                 if (ttsEnabled) {
-                    speakAiResponse(lastMessage.content)
+                    aiVoiceManager.offerStreamTextChunk(chunk)
+                }
+            }
+        )
+    }
+
+    var lastSpokenMessageId by remember { mutableStateOf<Long?>(null) }
+    androidx.compose.runtime.LaunchedEffect(isLoading) {
+        if (!isLoading) {
+            if (ttsEnabled) {
+                aiVoiceManager.finishStreamingSpeech()
+            }
+            if (activeMessages.isNotEmpty()) {
+                val lastMessage = activeMessages.last()
+                if (lastMessage.sender == "WORM_GPT" && !lastMessage.isError && lastMessage.id != lastSpokenMessageId) {
+                    lastSpokenMessageId = lastMessage.id
                 }
             }
         }
@@ -474,7 +497,7 @@ fun WormGptScreen(
                             .background(if (canSend) WormGptRedAccent else Color(0xFF3F3F46))
                             .clickable(enabled = canSend) {
                                 keyboardController?.hide()
-                                viewModel.sendMessage()
+                                handleSendMessage(null)
                             },
                         contentAlignment = Alignment.Center
                     ) {

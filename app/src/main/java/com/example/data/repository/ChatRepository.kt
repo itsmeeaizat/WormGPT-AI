@@ -101,7 +101,8 @@ class ChatRepository(private val chatDao: ChatDao) {
         selectedModel: String = "gemini-3.5-flash",
         customModels: List<CustomAiModel> = emptyList(),
         attachedFile: AttachedFile? = null,
-        persona: ChatPersona? = null
+        persona: ChatPersona? = null,
+        onChunkStream: ((String) -> Unit)? = null
     ): Result<String> {
         val personaPrompt = persona?.systemPromptInstruction?.let { "\n\n$it" }.orEmpty()
         val combinedSystemPrompt = mode.systemPrompt + personaPrompt
@@ -130,7 +131,7 @@ class ChatRepository(private val chatDao: ChatDao) {
                 .removePrefix("gemini/")
 
             if (providerLower == "gemini") {
-                return sendToGemini(userPrompt, conversationHistory, mode, resolvedKey, realModelId, attachedFile, persona)
+                return sendToGemini(userPrompt, conversationHistory, mode, resolvedKey, realModelId, attachedFile, persona, onChunkStream)
             }
 
             val resolvedBaseUrl = customModel.baseUrl.trim().ifBlank {
@@ -146,13 +147,13 @@ class ChatRepository(private val chatDao: ChatDao) {
                 return Result.failure(Exception("API Key untuk model kustom '${customModel.name}' belum dimasukkan."))
             }
 
-            return sendToOpenAiCompatibleApi(resolvedBaseUrl, resolvedKey, realModelId, combinedSystemPrompt, conversationHistory, userPrompt)
+            return sendToOpenAiCompatibleApi(resolvedBaseUrl, resolvedKey, realModelId, combinedSystemPrompt, conversationHistory, userPrompt, onChunkStream)
         }
 
         return when {
             selectedModel.startsWith("pollinations/") -> {
                 val realModel = selectedModel.removePrefix("pollinations/")
-                sendToPollinationsApi(realModel, combinedSystemPrompt, userPrompt)
+                sendToPollinationsApi(realModel, combinedSystemPrompt, userPrompt, onChunkStream)
             }
             selectedModel.startsWith("groq/") -> {
                 val realModel = selectedModel.removePrefix("groq/")
@@ -167,7 +168,8 @@ class ChatRepository(private val chatDao: ChatDao) {
                         modelName = realModel,
                         systemPrompt = combinedSystemPrompt,
                         conversationHistory = conversationHistory,
-                        userPrompt = userPrompt
+                        userPrompt = userPrompt,
+                        onChunkStream = onChunkStream
                     )
                 }
             }
@@ -184,7 +186,8 @@ class ChatRepository(private val chatDao: ChatDao) {
                         modelName = realModel,
                         systemPrompt = combinedSystemPrompt,
                         conversationHistory = conversationHistory,
-                        userPrompt = userPrompt
+                        userPrompt = userPrompt,
+                        onChunkStream = onChunkStream
                     )
                 }
             }
@@ -201,14 +204,15 @@ class ChatRepository(private val chatDao: ChatDao) {
                         modelName = realModel,
                         systemPrompt = combinedSystemPrompt,
                         conversationHistory = conversationHistory,
-                        userPrompt = userPrompt
+                        userPrompt = userPrompt,
+                        onChunkStream = onChunkStream
                     )
                 }
             }
             else -> {
                 // Default Gemini API handler
                 val cleanModel = selectedModel.removePrefix("gemini/")
-                sendToGemini(userPrompt, conversationHistory, mode, geminiApiKey, cleanModel, attachedFile, persona)
+                sendToGemini(userPrompt, conversationHistory, mode, geminiApiKey, cleanModel, attachedFile, persona, onChunkStream)
             }
         }
     }
@@ -220,7 +224,8 @@ class ChatRepository(private val chatDao: ChatDao) {
         customApiKey: String? = null,
         selectedModel: String = "gemini-3.5-flash",
         attachedFile: AttachedFile? = null,
-        persona: ChatPersona? = null
+        persona: ChatPersona? = null,
+        onChunkStream: ((String) -> Unit)? = null
     ): Result<String> {
         val apiKey = when {
             !customApiKey.isNullOrBlank() -> customApiKey.trim()
@@ -307,7 +312,9 @@ class ChatRepository(private val chatDao: ChatDao) {
 
                 val text = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
                 if (!text.isNullOrBlank()) {
-                    Result.success(cleanAiResponse(text))
+                    val cleaned = cleanAiResponse(text)
+                    onChunkStream?.invoke(cleaned)
+                    Result.success(cleaned)
                 } else if (response.error != null) {
                     Result.failure(ApiException(response.error.code, response.error.message ?: "Unknown Gemini API error"))
                 } else {
@@ -329,7 +336,8 @@ class ChatRepository(private val chatDao: ChatDao) {
         modelName: String,
         systemPrompt: String,
         conversationHistory: List<ChatMessageEntity>,
-        userPrompt: String
+        userPrompt: String,
+        onChunkStream: ((String) -> Unit)? = null
     ): Result<String> = executeWithRetry(modelName = modelName) {
         withContext(Dispatchers.IO) {
             try {
@@ -369,6 +377,9 @@ class ChatRepository(private val chatDao: ChatDao) {
                     put("messages", messagesArray)
                     put("temperature", 0.7)
                     put("max_tokens", 4096)
+                    if (onChunkStream != null) {
+                        put("stream", true)
+                    }
                 }
 
                 val requestBody = jsonBody.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
@@ -380,23 +391,62 @@ class ChatRepository(private val chatDao: ChatDao) {
                     .post(requestBody)
                     .build()
 
-                okHttpClient.newCall(request).execute().use { response ->
-                    val bodyString = response.body?.string().orEmpty()
-                    if (response.isSuccessful && bodyString.isNotBlank()) {
-                        val json = JSONObject(bodyString)
-                        val choices = json.optJSONArray("choices")
-                        if (choices != null && choices.length() > 0) {
-                            val choice = choices.getJSONObject(0)
-                            val messageObj = choice.optJSONObject("message")
-                            val content = messageObj?.optString("content")
-                            if (!content.isNullOrBlank()) {
-                                return@withContext Result.success(cleanAiResponse(content))
+                if (onChunkStream != null) {
+                    okHttpClient.newCall(request).execute().use { response ->
+                        if (!response.isSuccessful) {
+                            val bodyString = response.body?.string().orEmpty()
+                            val parsedMsg = parseJsonErrorMessage(bodyString)
+                            return@withContext Result.failure(ApiException(response.code, parsedMsg.ifBlank { bodyString }))
+                        }
+                        val source = response.body?.source()
+                        val fullSb = StringBuilder()
+                        if (source != null) {
+                            while (!source.exhausted()) {
+                                val line = source.readUtf8Line() ?: break
+                                if (line.startsWith("data: ")) {
+                                    val dataStr = line.removePrefix("data: ").trim()
+                                    if (dataStr == "[DONE]") break
+                                    try {
+                                        val json = JSONObject(dataStr)
+                                        val choices = json.optJSONArray("choices")
+                                        if (choices != null && choices.length() > 0) {
+                                            val delta = choices.getJSONObject(0).optJSONObject("delta")
+                                            val contentChunk = delta?.optString("content")
+                                            if (!contentChunk.isNullOrEmpty()) {
+                                                fullSb.append(contentChunk)
+                                                onChunkStream.invoke(contentChunk)
+                                            }
+                                        }
+                                    } catch (_: Exception) {}
+                                }
                             }
                         }
-                        Result.failure(ApiException(response.code, "Respon model kosong dari $modelName."))
-                    } else {
-                        val parsedMsg = parseJsonErrorMessage(bodyString)
-                        Result.failure(ApiException(response.code, parsedMsg.ifBlank { bodyString }))
+                        val cleanText = cleanAiResponse(fullSb.toString())
+                        if (cleanText.isNotBlank()) {
+                            return@withContext Result.success(cleanText)
+                        } else {
+                            return@withContext Result.failure(ApiException(response.code, "Respon model kosong dari $modelName."))
+                        }
+                    }
+                } else {
+                    okHttpClient.newCall(request).execute().use { response ->
+                        val bodyString = response.body?.string().orEmpty()
+                        if (response.isSuccessful && bodyString.isNotBlank()) {
+                            val json = JSONObject(bodyString)
+                            val choices = json.optJSONArray("choices")
+                            if (choices != null && choices.length() > 0) {
+                                val choice = choices.getJSONObject(0)
+                                val messageObj = choice.optJSONObject("message")
+                                val content = messageObj?.optString("content")
+                                if (!content.isNullOrBlank()) {
+                                    return@withContext Result.success(cleanAiResponse(content))
+                                }
+                            }
+                            Result.failure(ApiException(response.code, "Respon model kosong dari $modelName."))
+                        } else {
+                            val parsedMsg = parseJsonErrorMessage(bodyString)
+                            Result.failure(ApiException(response.code, parsedMsg.ifBlank { bodyString }))
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -408,7 +458,8 @@ class ChatRepository(private val chatDao: ChatDao) {
     private suspend fun sendToPollinationsApi(
         modelName: String,
         systemPrompt: String,
-        userPrompt: String
+        userPrompt: String,
+        onChunkStream: ((String) -> Unit)? = null
     ): Result<String> = executeWithRetry(modelName = modelName) {
         withContext(Dispatchers.IO) {
             try {
@@ -437,6 +488,7 @@ class ChatRepository(private val chatDao: ChatDao) {
                 okHttpClient.newCall(request).execute().use { response ->
                     val bodyString = response.body?.string().orEmpty()
                     if (response.isSuccessful && bodyString.isNotBlank()) {
+                        onChunkStream?.invoke(bodyString)
                         Result.success(bodyString)
                     } else {
                         val parsedMsg = parseJsonErrorMessage(bodyString)

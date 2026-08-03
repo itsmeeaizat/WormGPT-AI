@@ -6,9 +6,11 @@ import android.media.MediaPlayer
 import android.os.Build
 import android.speech.tts.TextToSpeech
 import android.util.Log
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -87,6 +89,9 @@ class AiVoiceManager(private val context: Context) {
     private val scope = CoroutineScope(Dispatchers.Main)
     private var speakJob: Job? = null
 
+    private var speechChannel: Channel<String>? = null
+    private val sentenceBuffer = StringBuilder()
+
     private val _isSpeaking = MutableStateFlow(false)
     val isSpeaking: StateFlow<Boolean> = _isSpeaking
 
@@ -109,6 +114,10 @@ class AiVoiceManager(private val context: Context) {
     fun stop() {
         speakJob?.cancel()
         speakJob = null
+        speechChannel?.close()
+        speechChannel = null
+        sentenceBuffer.clear()
+
         try {
             if (mediaPlayer?.isPlaying == true) {
                 mediaPlayer?.stop()
@@ -125,6 +134,88 @@ class AiVoiceManager(private val context: Context) {
         _isLoadingAudio.value = false
     }
 
+    /**
+     * Inisialisasi Real-time Audio Streaming Queue untuk membaca kalimat bertahap seiring teks muncul di layar.
+     */
+    fun startStreamingSpeech(
+        provider: String,
+        voiceName: String,
+        elevenLabsKey: String = "",
+        googleCloudKey: String = "",
+        speed: Float = 1.0f,
+        pitch: Float = 1.0f
+    ) {
+        stop()
+        val channel = Channel<String>(Channel.UNLIMITED)
+        speechChannel = channel
+
+        speakJob = scope.launch(Dispatchers.IO) {
+            _isSpeaking.value = true
+            for (sentence in channel) {
+                val cleanSentence = cleanTextForSpeech(sentence)
+                if (cleanSentence.isBlank()) continue
+
+                _isLoadingAudio.value = true
+                val audioFile = try {
+                    fetchAudioForSentence(cleanSentence, provider, voiceName, elevenLabsKey, googleCloudKey, speed, pitch)
+                } catch (e: Exception) {
+                    null
+                }
+                _isLoadingAudio.value = false
+
+                if (audioFile != null && audioFile.exists() && audioFile.length() > 0) {
+                    playAudioFileAndWait(audioFile)
+                } else {
+                    speakWithSystemTtsAndWait(cleanSentence, voiceName, speed, pitch)
+                }
+            }
+            _isSpeaking.value = false
+        }
+    }
+
+    /**
+     * Menerima potongan token teks AI secara real-time dari stream model.
+     */
+    fun offerStreamTextChunk(chunk: String) {
+        if (speechChannel == null) return
+        sentenceBuffer.append(chunk)
+
+        var boundaryIdx = findSentenceBoundary(sentenceBuffer)
+        while (boundaryIdx != -1) {
+            val sentence = sentenceBuffer.substring(0, boundaryIdx + 1)
+            sentenceBuffer.delete(0, boundaryIdx + 1)
+            if (sentence.isNotBlank()) {
+                speechChannel?.trySend(sentence)
+            }
+            boundaryIdx = findSentenceBoundary(sentenceBuffer)
+        }
+    }
+
+    /**
+     * Menandai akhir dari streaming jawaban AI.
+     */
+    fun finishStreamingSpeech() {
+        val remaining = sentenceBuffer.toString()
+        sentenceBuffer.clear()
+        if (remaining.isNotBlank()) {
+            speechChannel?.trySend(remaining)
+        }
+        speechChannel?.close()
+    }
+
+    private fun findSentenceBoundary(sb: StringBuilder): Int {
+        for (i in 0 until sb.length) {
+            val ch = sb[i]
+            if (ch == '.' || ch == '!' || ch == '?' || ch == '\n' || ch == '\r') {
+                return i
+            }
+            if (i >= 50 && (ch == ',' || ch == ':' || ch == ';')) {
+                return i
+            }
+        }
+        return -1
+    }
+
     fun speak(
         text: String,
         provider: String,
@@ -134,74 +225,54 @@ class AiVoiceManager(private val context: Context) {
         speed: Float = 1.0f,
         pitch: Float = 1.0f
     ) {
-        stop()
+        startStreamingSpeech(provider, voiceName, elevenLabsKey, googleCloudKey, speed, pitch)
+        offerStreamTextChunk(text)
+        finishStreamingSpeech()
+    }
 
-        val cleanText = cleanTextForSpeech(text)
-        if (cleanText.isBlank()) return
-
-        speakJob = scope.launch(Dispatchers.IO) {
-            _isLoadingAudio.value = true
-
-            var audioFile: File? = null
-
-            try {
-                when (provider.lowercase()) {
-                    "elevenlabs" -> {
-                        if (elevenLabsKey.isNotBlank()) {
-                            audioFile = fetchElevenLabsAudio(cleanText, voiceName, elevenLabsKey)
-                        }
-                    }
-                    "google_cloud" -> {
-                        if (googleCloudKey.isNotBlank()) {
-                            audioFile = fetchGoogleCloudTtsAudio(cleanText, voiceName, googleCloudKey, speed, pitch)
-                        }
-                    }
-                    "openai" -> {
-                        audioFile = fetchPollinationsTtsAudio(cleanText, voiceName)
-                    }
-                    "gemini" -> {
-                        // Map Gemini voice to Pollinations or Google Cloud
-                        val mappedVoice = when (voiceName.lowercase()) {
-                            "puck", "charon", "fenrir" -> "echo"
-                            "kore", "aoede" -> "nova"
-                            else -> voiceName.lowercase()
-                        }
-                        audioFile = fetchPollinationsTtsAudio(cleanText, mappedVoice)
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e("AiVoiceManager", "API Voice synthesis error: ${e.localizedMessage}")
+    private suspend fun fetchAudioForSentence(
+        cleanText: String,
+        provider: String,
+        voiceName: String,
+        elevenLabsKey: String,
+        googleCloudKey: String,
+        speed: Float,
+        pitch: Float
+    ): File? {
+        return when (provider.lowercase()) {
+            "elevenlabs" -> {
+                if (elevenLabsKey.isNotBlank()) fetchElevenLabsAudio(cleanText, voiceName, elevenLabsKey) else null
             }
-
-            _isLoadingAudio.value = false
-
-            if (audioFile != null && audioFile.exists() && audioFile.length() > 0) {
-                withContext(Dispatchers.Main) {
-                    playAudioFile(audioFile)
-                }
-            } else {
-                // Fallback to System TTS gracefully
-                withContext(Dispatchers.Main) {
-                    speakWithSystemTts(cleanText, voiceName, speed, pitch)
-                }
+            "google_cloud" -> {
+                if (googleCloudKey.isNotBlank()) fetchGoogleCloudTtsAudio(cleanText, voiceName, googleCloudKey, speed, pitch) else null
             }
+            "openai" -> fetchPollinationsTtsAudio(cleanText, voiceName)
+            "gemini" -> {
+                val mappedVoice = when (voiceName.lowercase()) {
+                    "puck", "charon", "fenrir" -> "echo"
+                    "kore", "aoede" -> "nova"
+                    else -> voiceName.lowercase()
+                }
+                fetchPollinationsTtsAudio(cleanText, mappedVoice)
+            }
+            else -> null
         }
     }
 
     private suspend fun fetchPollinationsTtsAudio(text: String, voiceName: String): File? = withContext(Dispatchers.IO) {
         try {
-            val encodedText = URLEncoder.encode(text.take(800), "UTF-8")
+            val encodedText = URLEncoder.encode(text.take(600), "UTF-8")
             val voiceParam = URLEncoder.encode(voiceName.lowercase(), "UTF-8")
             val urlString = "https://text.pollinations.ai/prompt/$encodedText?voice=$voiceParam&model=openai"
 
             val url = URL(urlString)
             val conn = url.openConnection() as HttpURLConnection
-            conn.connectTimeout = 8000
-            conn.readTimeout = 12000
+            conn.connectTimeout = 6000
+            conn.readTimeout = 10000
             conn.requestMethod = "GET"
 
             if (conn.responseCode == 200) {
-                val tempFile = File(context.cacheDir, "ai_voice_${System.currentTimeMillis()}.mp3")
+                val tempFile = File(context.cacheDir, "stream_voice_${System.currentTimeMillis()}.mp3")
                 conn.inputStream.use { input ->
                     FileOutputStream(tempFile).use { output ->
                         input.copyTo(output)
@@ -223,12 +294,12 @@ class AiVoiceManager(private val context: Context) {
             conn.requestMethod = "POST"
             conn.setRequestProperty("xi-api-key", apiKey)
             conn.setRequestProperty("Content-Type", "application/json")
-            conn.connectTimeout = 8000
-            conn.readTimeout = 15000
+            conn.connectTimeout = 6000
+            conn.readTimeout = 12000
             conn.doOutput = true
 
             val jsonBody = JSONObject().apply {
-                put("text", text.take(1000))
+                put("text", text.take(600))
                 put("model_id", "eleven_multilingual_v2")
                 put("voice_settings", JSONObject().apply {
                     put("stability", 0.5)
@@ -267,13 +338,13 @@ class AiVoiceManager(private val context: Context) {
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
             conn.setRequestProperty("Content-Type", "application/json")
-            conn.connectTimeout = 8000
-            conn.readTimeout = 15000
+            conn.connectTimeout = 6000
+            conn.readTimeout = 12000
             conn.doOutput = true
 
             val langCode = if (voiceName.startsWith("id-")) "id-ID" else "en-US"
             val jsonBody = JSONObject().apply {
-                put("input", JSONObject().put("text", text.take(1000)))
+                put("input", JSONObject().put("text", text.take(600)))
                 put("voice", JSONObject().apply {
                     put("languageCode", langCode)
                     put("name", voiceName)
@@ -306,9 +377,13 @@ class AiVoiceManager(private val context: Context) {
         return@withContext null
     }
 
-    private fun playAudioFile(file: File) {
+    private suspend fun playAudioFileAndWait(file: File) = withContext(Dispatchers.Main) {
+        val deferred = CompletableDeferred<Unit>()
         try {
-            stop()
+            if (mediaPlayer?.isPlaying == true) {
+                mediaPlayer?.stop()
+            }
+            mediaPlayer?.release()
             mediaPlayer = MediaPlayer().apply {
                 setAudioAttributes(
                     AudioAttributes.Builder()
@@ -319,27 +394,44 @@ class AiVoiceManager(private val context: Context) {
                 setDataSource(file.absolutePath)
                 prepare()
                 setOnCompletionListener {
-                    _isSpeaking.value = false
+                    deferred.complete(Unit)
                     file.delete()
                 }
                 setOnErrorListener { _, _, _ ->
-                    _isSpeaking.value = false
+                    deferred.complete(Unit)
                     file.delete()
                     true
                 }
                 start()
-                _isSpeaking.value = true
             }
         } catch (e: Exception) {
-            Log.e("AiVoiceManager", "MediaPlayer playback error: ${e.localizedMessage}")
-            _isSpeaking.value = false
+            file.delete()
+            deferred.complete(Unit)
         }
+        deferred.await()
     }
 
-    private fun speakWithSystemTts(text: String, voiceName: String, speed: Float, pitch: Float) {
-        if (!ttsReady || systemTts == null) return
+    private suspend fun speakWithSystemTtsAndWait(
+        text: String,
+        voiceName: String,
+        speed: Float,
+        pitch: Float
+    ) = withContext(Dispatchers.Main) {
+        if (!ttsReady || systemTts == null) return@withContext
 
+        val deferred = CompletableDeferred<Unit>()
         try {
+            val utteranceId = "stream_tts_${System.currentTimeMillis()}"
+            systemTts?.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
+                override fun onStart(id: String?) {}
+                override fun onDone(id: String?) {
+                    if (id == utteranceId) deferred.complete(Unit)
+                }
+                override fun onError(id: String?) {
+                    if (id == utteranceId) deferred.complete(Unit)
+                }
+            })
+
             systemTts?.run {
                 setSpeechRate(speed)
                 setPitch(pitch)
@@ -361,13 +453,12 @@ class AiVoiceManager(private val context: Context) {
                     }
                 }
 
-                _isSpeaking.value = true
-                speak(text, TextToSpeech.QUEUE_FLUSH, null, "ai_voice_id")
+                speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
             }
         } catch (e: Exception) {
-            Log.e("AiVoiceManager", "System TTS speak error: ${e.localizedMessage}")
-            _isSpeaking.value = false
+            deferred.complete(Unit)
         }
+        deferred.await()
     }
 
     fun destroy() {

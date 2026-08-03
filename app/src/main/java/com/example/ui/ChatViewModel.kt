@@ -304,7 +304,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         attachedFile.value = null
     }
 
-    fun sendMessage(overridePrompt: String? = null) {
+    fun sendMessage(overridePrompt: String? = null, onChunkReceived: ((String) -> Unit)? = null) {
         val rawUserPrompt = (overridePrompt ?: inputPrompt.value).trim()
         val currentAttached = attachedFile.value
         
@@ -353,7 +353,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 selectedModel = selectedModel.value,
                 customModels = customModels.value,
                 attachedFile = currentAttached,
-                persona = currentPersona.value
+                persona = currentPersona.value,
+                onChunkStream = { chunk ->
+                    onChunkReceived?.invoke(chunk)
+                }
             )
 
             result.onSuccess { replyText ->
