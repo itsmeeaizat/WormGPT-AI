@@ -180,7 +180,7 @@ class AiVoiceManager(private val context: Context) {
             if (ch == '.' || ch == '!' || ch == '?' || ch == '\n' || ch == '\r') {
                 return i
             }
-            if (i >= 45 && (ch == ',' || ch == ':' || ch == ';')) {
+            if (i >= 35 && (ch == ',' || ch == ':' || ch == ';')) {
                 return i
             }
         }
@@ -212,35 +212,39 @@ class AiVoiceManager(private val context: Context) {
     ): File? {
         return when (provider.lowercase()) {
             "elevenlabs" -> {
-                if (elevenLabsKey.isNotBlank()) fetchElevenLabsAudio(cleanText, voiceName, elevenLabsKey) else null
+                if (elevenLabsKey.isNotBlank()) {
+                    fetchElevenLabsAudio(cleanText, voiceName, elevenLabsKey)
+                } else {
+                    fetchGoogleCloudAudioStream(cleanText, "id")
+                }
             }
             "google_cloud" -> {
-                if (googleCloudKey.isNotBlank()) fetchGoogleCloudTtsAudio(cleanText, voiceName, googleCloudKey, speed, pitch) else null
-            }
-            "openai" -> fetchPollinationsTtsAudio(cleanText, voiceName)
-            "gemini" -> {
-                val mappedVoice = when (voiceName.lowercase()) {
-                    "puck", "charon", "fenrir" -> "echo"
-                    "kore", "aoede" -> "nova"
-                    else -> voiceName.lowercase()
+                if (googleCloudKey.isNotBlank()) {
+                    fetchGoogleCloudTtsAudio(cleanText, voiceName, googleCloudKey, speed, pitch)
+                } else {
+                    val lang = if (voiceName.startsWith("id-")) "id" else "en"
+                    fetchGoogleCloudAudioStream(cleanText, lang)
                 }
-                fetchPollinationsTtsAudio(cleanText, mappedVoice)
             }
-            else -> fetchPollinationsTtsAudio(cleanText, "echo")
+            else -> {
+                // Default for Gemini & OpenAI models: direct high-speed audio stream
+                val lang = if (cleanText.contains(Regex("[a-zA-Z]")) && !cleanText.contains(Regex("(yang|dengan|untuk|bisa|ini|itu|adalah|tidak)"))) "en" else "id"
+                fetchGoogleCloudAudioStream(cleanText, lang)
+            }
         }
     }
 
-    private suspend fun fetchPollinationsTtsAudio(text: String, voiceName: String): File? = withContext(Dispatchers.IO) {
+    private suspend fun fetchGoogleCloudAudioStream(text: String, lang: String): File? = withContext(Dispatchers.IO) {
         try {
-            val encodedText = URLEncoder.encode(text.take(600), "UTF-8")
-            val voiceParam = URLEncoder.encode(voiceName.lowercase(), "UTF-8")
-            val urlString = "https://text.pollinations.ai/prompt/$encodedText?voice=$voiceParam&model=openai"
+            val encodedText = URLEncoder.encode(text.take(200), "UTF-8")
+            val urlString = "https://translate.google.com/translate_tts?ie=UTF-8&q=$encodedText&tl=$lang&client=tw-ob"
 
             val url = URL(urlString)
             val conn = url.openConnection() as HttpURLConnection
-            conn.connectTimeout = 6000
-            conn.readTimeout = 10000
+            conn.connectTimeout = 5000
+            conn.readTimeout = 8000
             conn.requestMethod = "GET"
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
             if (conn.responseCode == 200) {
                 val tempFile = File(context.cacheDir, "stream_voice_${System.currentTimeMillis()}.mp3")
@@ -249,10 +253,12 @@ class AiVoiceManager(private val context: Context) {
                         input.copyTo(output)
                     }
                 }
-                return@withContext tempFile
+                if (tempFile.exists() && tempFile.length() > 0) {
+                    return@withContext tempFile
+                }
             }
         } catch (e: Exception) {
-            Log.e("AiVoiceManager", "Pollinations Voice API error: ${e.localizedMessage}")
+            Log.e("AiVoiceManager", "Cloud Speech Streaming error: ${e.localizedMessage}")
         }
         return@withContext null
     }
@@ -260,7 +266,7 @@ class AiVoiceManager(private val context: Context) {
     private suspend fun fetchElevenLabsAudio(text: String, voiceId: String, apiKey: String): File? = withContext(Dispatchers.IO) {
         try {
             val realVoiceId = if (voiceId.isBlank()) "21m00Tcm4TlvDq8ikWAM" else voiceId
-            val url = URL("https://api.elevenlabs.io/v1/text-to-speech/$realVoiceId")
+            val url = URL("https://api.elevenlabs.io/v1/text-to-speech/$realVoiceId/stream")
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
             conn.setRequestProperty("xi-api-key", apiKey)
@@ -270,7 +276,7 @@ class AiVoiceManager(private val context: Context) {
             conn.doOutput = true
 
             val jsonBody = JSONObject().apply {
-                put("text", text.take(600))
+                put("text", text.take(400))
                 put("model_id", "eleven_multilingual_v2")
                 put("voice_settings", JSONObject().apply {
                     put("stability", 0.5)
@@ -315,7 +321,7 @@ class AiVoiceManager(private val context: Context) {
 
             val langCode = if (voiceName.startsWith("id-")) "id-ID" else "en-US"
             val jsonBody = JSONObject().apply {
-                put("input", JSONObject().put("text", text.take(600)))
+                put("input", JSONObject().put("text", text.take(400)))
                 put("voice", JSONObject().apply {
                     put("languageCode", langCode)
                     put("name", voiceName)
