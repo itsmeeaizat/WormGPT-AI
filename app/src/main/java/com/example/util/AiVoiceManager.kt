@@ -3,8 +3,6 @@ package com.example.util
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.MediaPlayer
-import android.os.Build
-import android.speech.tts.TextToSpeech
 import android.util.Log
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -21,52 +19,46 @@ import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
-import java.util.Locale
 
 data class AiVoiceOption(
     val id: String,
     val name: String,
     val gender: String, // "Male", "Female", "Neutral"
     val description: String,
-    val provider: String // "gemini", "openai", "elevenlabs", "google_cloud", "system"
+    val provider: String // "gemini", "openai", "elevenlabs", "google_cloud"
 )
 
 object AiVoiceCatalog {
     val GEMINI_VOICES = listOf(
-        AiVoiceOption("Puck", "Puck (Gemini Male)", "Male", "Suara Pria Enerjik & Natural", "gemini"),
-        AiVoiceOption("Charon", "Charon (Gemini Deep Male)", "Male", "Suara Pria Dalam & Karismatik", "gemini"),
-        AiVoiceOption("Kore", "Kore (Gemini Female)", "Female", "Suara Wanita Lembut & Ramah", "gemini"),
-        AiVoiceOption("Fenrir", "Fenrir (Gemini Firm Male)", "Male", "Suara Pria Maskulin & Tegas", "gemini"),
-        AiVoiceOption("Aoede", "Aoede (Gemini Warm Female)", "Female", "Suara Wanita Anggun & Warm", "gemini")
+        AiVoiceOption("Puck", "Puck (Gemini Male)", "Male", "Suara Pria Enerjik & Natural Pusat", "gemini"),
+        AiVoiceOption("Charon", "Charon (Gemini Deep Male)", "Male", "Suara Pria Dalam & Karismatik Pusat", "gemini"),
+        AiVoiceOption("Kore", "Kore (Gemini Female)", "Female", "Suara Wanita Lembut & Ramah Pusat", "gemini"),
+        AiVoiceOption("Fenrir", "Fenrir (Gemini Firm Male)", "Male", "Suara Pria Maskulin & Tegas Pusat", "gemini"),
+        AiVoiceOption("Aoede", "Aoede (Gemini Warm Female)", "Female", "Suara Wanita Anggun & Warm Pusat", "gemini")
     )
 
     val OPENAI_VOICES = listOf(
-        AiVoiceOption("alloy", "Alloy (OpenAI Balanced)", "Neutral", "Suara Netral, Seimbang & Luwes", "openai"),
-        AiVoiceOption("echo", "Echo (OpenAI Warm Male)", "Male", "Suara Pria Hangat & Ramah", "openai"),
-        AiVoiceOption("fable", "Fable (OpenAI British Male)", "Male", "Suara Pria Ekspresif Naratif", "openai"),
-        AiVoiceOption("onyx", "Onyx (OpenAI Deep Male)", "Male", "Suara Pria Dalam & Wibawa", "openai"),
-        AiVoiceOption("nova", "Nova (OpenAI Energetic Female)", "Female", "Suara Wanita Ceria & Jernih", "openai"),
-        AiVoiceOption("shimmer", "Shimmer (OpenAI Clear Female)", "Female", "Suara Wanita Profesional & Smooth", "openai")
+        AiVoiceOption("alloy", "Alloy (OpenAI Balanced)", "Neutral", "Suara Netral, Seimbang & Luwes Pusat", "openai"),
+        AiVoiceOption("echo", "Echo (OpenAI Warm Male)", "Male", "Suara Pria Hangat & Ramah Pusat", "openai"),
+        AiVoiceOption("fable", "Fable (OpenAI British Male)", "Male", "Suara Pria Ekspresif Naratif Pusat", "openai"),
+        AiVoiceOption("onyx", "Onyx (OpenAI Deep Male)", "Male", "Suara Pria Dalam & Wibawa Pusat", "openai"),
+        AiVoiceOption("nova", "Nova (OpenAI Energetic Female)", "Female", "Suara Wanita Ceria & Jernih Pusat", "openai"),
+        AiVoiceOption("shimmer", "Shimmer (OpenAI Clear Female)", "Female", "Suara Wanita Profesional & Smooth Pusat", "openai")
     )
 
     val GOOGLE_CLOUD_VOICES = listOf(
-        AiVoiceOption("id-ID-Neural2-A", "Indonesia Neural2 Female", "Female", "Suara AI Indonesia Neural2 Wanita", "google_cloud"),
-        AiVoiceOption("id-ID-Neural2-C", "Indonesia Neural2 Male", "Male", "Suara AI Indonesia Neural2 Pria", "google_cloud"),
-        AiVoiceOption("id-ID-Wavenet-A", "Indonesia Wavenet Female", "Female", "Suara AI Indonesia Wavenet Wanita", "google_cloud"),
-        AiVoiceOption("id-ID-Wavenet-D", "Indonesia Wavenet Male", "Male", "Suara AI Indonesia Wavenet Pria", "google_cloud")
+        AiVoiceOption("id-ID-Neural2-A", "Indonesia Neural2 Female", "Female", "Suara AI Cloud Indonesia Neural2 Wanita", "google_cloud"),
+        AiVoiceOption("id-ID-Neural2-C", "Indonesia Neural2 Male", "Male", "Suara AI Cloud Indonesia Neural2 Pria", "google_cloud"),
+        AiVoiceOption("id-ID-Wavenet-A", "Indonesia Wavenet Female", "Female", "Suara AI Cloud Indonesia Wavenet Wanita", "google_cloud"),
+        AiVoiceOption("id-ID-Wavenet-D", "Indonesia Wavenet Male", "Male", "Suara AI Cloud Indonesia Wavenet Pria", "google_cloud")
     )
 
     val ELEVENLABS_VOICES = listOf(
-        AiVoiceOption("21m00Tcm4TlvDq8ikWAM", "Rachel (ElevenLabs Natural)", "Female", "Suara Wanita Natural & Calming", "elevenlabs"),
-        AiVoiceOption("pNInz6obpgDQGcFmaJgB", "Adam (ElevenLabs Deep Male)", "Male", "Suara Pria Karismatik & Deep", "elevenlabs"),
-        AiVoiceOption("EXAVITQu4vr4xnSDxMaL", "Bella (ElevenLabs Expressive)", "Female", "Suara Wanita Narasi Jernih", "elevenlabs"),
-        AiVoiceOption("ErXwobaYiN019PkySvjV", "Antoni (ElevenLabs Elegant Male)", "Male", "Suara Pria Elegan & Luwes", "elevenlabs"),
-        AiVoiceOption("TxGEqnHWrfWFTfGW9XjX", "Josh (ElevenLabs Conversational)", "Male", "Suara Pria Santai & Lifelike", "elevenlabs")
-    )
-
-    val SYSTEM_VOICES = listOf(
-        AiVoiceOption("system_female", "System Local Female", "Female", "Suara Bawaan HP Wanita", "system"),
-        AiVoiceOption("system_male", "System Local Male", "Male", "Suara Bawaan HP Pria", "system")
+        AiVoiceOption("21m00Tcm4TlvDq8ikWAM", "Rachel (ElevenLabs Natural)", "Female", "Suara AI ElevenLabs Natural & Calming", "elevenlabs"),
+        AiVoiceOption("pNInz6obpgDQGcFmaJgB", "Adam (ElevenLabs Deep Male)", "Male", "Suara AI ElevenLabs Pria Karismatik", "elevenlabs"),
+        AiVoiceOption("EXAVITQu4vr4xnSDxMaL", "Bella (ElevenLabs Expressive)", "Female", "Suara AI ElevenLabs Narasi Jernih", "elevenlabs"),
+        AiVoiceOption("ErXwobaYiN019PkySvjV", "Antoni (ElevenLabs Elegant Male)", "Male", "Suara AI ElevenLabs Elegan & Luwes", "elevenlabs"),
+        AiVoiceOption("TxGEqnHWrfWFTfGW9XjX", "Josh (ElevenLabs Conversational)", "Male", "Suara AI ElevenLabs Conversational", "elevenlabs")
     )
 
     fun getVoicesForProvider(provider: String): List<AiVoiceOption> {
@@ -75,7 +67,6 @@ object AiVoiceCatalog {
             "openai" -> OPENAI_VOICES
             "google_cloud" -> GOOGLE_CLOUD_VOICES
             "elevenlabs" -> ELEVENLABS_VOICES
-            "system" -> SYSTEM_VOICES
             else -> GEMINI_VOICES + OPENAI_VOICES
         }
     }
@@ -83,8 +74,6 @@ object AiVoiceCatalog {
 
 class AiVoiceManager(private val context: Context) {
     private var mediaPlayer: MediaPlayer? = null
-    private var systemTts: TextToSpeech? = null
-    private var ttsReady = false
 
     private val scope = CoroutineScope(Dispatchers.Main)
     private var speakJob: Job? = null
@@ -97,19 +86,6 @@ class AiVoiceManager(private val context: Context) {
 
     private val _isLoadingAudio = MutableStateFlow(false)
     val isLoadingAudio: StateFlow<Boolean> = _isLoadingAudio
-
-    init {
-        initSystemTts()
-    }
-
-    private fun initSystemTts() {
-        systemTts = TextToSpeech(context.applicationContext) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                ttsReady = true
-                systemTts?.language = Locale("id", "ID")
-            }
-        }
-    }
 
     fun stop() {
         speakJob?.cancel()
@@ -126,16 +102,12 @@ class AiVoiceManager(private val context: Context) {
             mediaPlayer = null
         } catch (_: Exception) {}
 
-        try {
-            systemTts?.stop()
-        } catch (_: Exception) {}
-
         _isSpeaking.value = false
         _isLoadingAudio.value = false
     }
 
     /**
-     * Inisialisasi Real-time Audio Streaming Queue untuk membaca kalimat bertahap seiring teks muncul di layar.
+     * Inisialisasi Real-time Streaming Voice langsung dari API Server Pusat.
      */
     fun startStreamingSpeech(
         provider: String,
@@ -159,14 +131,13 @@ class AiVoiceManager(private val context: Context) {
                 val audioFile = try {
                     fetchAudioForSentence(cleanSentence, provider, voiceName, elevenLabsKey, googleCloudKey, speed, pitch)
                 } catch (e: Exception) {
+                    Log.e("AiVoiceManager", "Gagal mengambil streaming audio API: ${e.localizedMessage}")
                     null
                 }
                 _isLoadingAudio.value = false
 
                 if (audioFile != null && audioFile.exists() && audioFile.length() > 0) {
                     playAudioFileAndWait(audioFile)
-                } else {
-                    speakWithSystemTtsAndWait(cleanSentence, voiceName, speed, pitch)
                 }
             }
             _isSpeaking.value = false
@@ -209,7 +180,7 @@ class AiVoiceManager(private val context: Context) {
             if (ch == '.' || ch == '!' || ch == '?' || ch == '\n' || ch == '\r') {
                 return i
             }
-            if (i >= 50 && (ch == ',' || ch == ':' || ch == ';')) {
+            if (i >= 45 && (ch == ',' || ch == ':' || ch == ';')) {
                 return i
             }
         }
@@ -255,7 +226,7 @@ class AiVoiceManager(private val context: Context) {
                 }
                 fetchPollinationsTtsAudio(cleanText, mappedVoice)
             }
-            else -> null
+            else -> fetchPollinationsTtsAudio(cleanText, "echo")
         }
     }
 
@@ -281,7 +252,7 @@ class AiVoiceManager(private val context: Context) {
                 return@withContext tempFile
             }
         } catch (e: Exception) {
-            Log.e("AiVoiceManager", "Pollinations TTS error: ${e.localizedMessage}")
+            Log.e("AiVoiceManager", "Pollinations Voice API error: ${e.localizedMessage}")
         }
         return@withContext null
     }
@@ -321,7 +292,7 @@ class AiVoiceManager(private val context: Context) {
                 return@withContext tempFile
             }
         } catch (e: Exception) {
-            Log.e("AiVoiceManager", "ElevenLabs TTS error: ${e.localizedMessage}")
+            Log.e("AiVoiceManager", "ElevenLabs API error: ${e.localizedMessage}")
         }
         return@withContext null
     }
@@ -372,7 +343,7 @@ class AiVoiceManager(private val context: Context) {
                 }
             }
         } catch (e: Exception) {
-            Log.e("AiVoiceManager", "Google Cloud TTS error: ${e.localizedMessage}")
+            Log.e("AiVoiceManager", "Google Cloud Voice API error: ${e.localizedMessage}")
         }
         return@withContext null
     }
@@ -411,62 +382,8 @@ class AiVoiceManager(private val context: Context) {
         deferred.await()
     }
 
-    private suspend fun speakWithSystemTtsAndWait(
-        text: String,
-        voiceName: String,
-        speed: Float,
-        pitch: Float
-    ) = withContext(Dispatchers.Main) {
-        if (!ttsReady || systemTts == null) return@withContext
-
-        val deferred = CompletableDeferred<Unit>()
-        try {
-            val utteranceId = "stream_tts_${System.currentTimeMillis()}"
-            systemTts?.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
-                override fun onStart(id: String?) {}
-                override fun onDone(id: String?) {
-                    if (id == utteranceId) deferred.complete(Unit)
-                }
-                override fun onError(id: String?) {
-                    if (id == utteranceId) deferred.complete(Unit)
-                }
-            })
-
-            systemTts?.run {
-                setSpeechRate(speed)
-                setPitch(pitch)
-
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    val voices = voices
-                    if (voices != null) {
-                        val isMaleTarget = voiceName.lowercase().contains("male") || voiceName.lowercase().contains("c") || voiceName.lowercase().contains("d")
-                        val matchedVoice = voices.firstOrNull { v ->
-                            val vName = v.name.lowercase()
-                            v.locale.language.equals("id", ignoreCase = true) &&
-                                    (if (isMaleTarget) vName.contains("male") || vName.contains("c") || vName.contains("d")
-                                    else vName.contains("female") || vName.contains("a") || vName.contains("b"))
-                        } ?: voices.firstOrNull { it.locale.language.equals("id", ignoreCase = true) }
-
-                        if (matchedVoice != null) {
-                            voice = matchedVoice
-                        }
-                    }
-                }
-
-                speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
-            }
-        } catch (e: Exception) {
-            deferred.complete(Unit)
-        }
-        deferred.await()
-    }
-
     fun destroy() {
         stop()
-        try {
-            systemTts?.shutdown()
-            systemTts = null
-        } catch (_: Exception) {}
     }
 
     private fun cleanTextForSpeech(text: String): String {

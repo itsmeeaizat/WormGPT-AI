@@ -457,8 +457,7 @@ fun SettingsDialog(
                             "gemini" to "Gemini",
                             "openai" to "OpenAI",
                             "elevenlabs" to "ElevenLabs",
-                            "google_cloud" to "G-Cloud",
-                            "system" to "System HP"
+                            "google_cloud" to "G-Cloud"
                         ).forEach { (pKey, pLabel) ->
                             val isSel = voiceProvider.equals(pKey, ignoreCase = true)
                             Box(
