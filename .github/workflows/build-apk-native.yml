@@ -48,19 +48,27 @@ jobs:
           cp ~/.android/debug.keystore ./debug.keystore
 
       - name: Build Debug APK with Gradle
-        run: ./gradlew assembleDebug -Pkotlin.compiler.execution.strategy=in-process
+        run: ./gradlew assembleDebug --no-daemon -Pkotlin.incremental=false
 
-      - name: Rename APK
-        id: rename_apk
+      - name: Extract App Version and Setup Metadata
+        id: metadata
         run: |
           REPO_NAME="${{ github.event.repository.name }}"
+          
+          # Mengambil versionName secara otomatis dari defaultConfig di build.gradle / build.gradle.kts jika ada
+          VERSION_NAME=$(grep -m 1 "versionName" app/build.gradle* 2>/dev/null | tr -d ' "versionName=' || echo "1.0.${{ github.run_number }}")
+          if [ -z "$VERSION_NAME" ]; then
+            VERSION_NAME="1.0.${{ github.run_number }}"
+          fi
+          
           APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
           
           if [ -f "$APK_PATH" ]; then
-            NEW_NAME="${REPO_NAME}-Aizat-debug.apk"
+            NEW_NAME="${REPO_NAME}-${VERSION_NAME}-debug.apk"
             cp "$APK_PATH" "$NEW_NAME"
             echo "APK_NAME=$NEW_NAME" >> $GITHUB_ENV
-            echo "APK berhasil di-rename menjadi: $NEW_NAME"
+            echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_ENV
+            echo "APK berhasil di-rename menjadi: $NEW_NAME dengan versi $VERSION_NAME"
           else
             echo "File APK tidak ditemukan!"
             exit 1
@@ -77,17 +85,18 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.ref_name == 'main'
         with:
           files: ${{ env.APK_NAME }}
-          # Logika Tag: Menggunakan tag asli jika ada, atau membuat tag otomatis berbasis build number jika dipicu manual/push main
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v1.0.{0}-build', github.run_number) }}
-          name: "Buat CV Professional Build (${{ github.run_number }})"
+          # Otomatis membuat tag berbasis versi project atau tag git yang aktif
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', env.VERSION_NAME) }}
+          name: "${{ github.event.repository.name }} v${{ env.VERSION_NAME }} (Build #${{ github.run_number }})"
           body: |
-            ### 📱 Buat CV Professional (Android App)
+            ### 📱 ${{ github.event.repository.name }} (Android App)
             * **Developer:** Aizat
+            * **App Version:** v${{ env.VERSION_NAME }}
             * **Build Number:** ${{ github.run_number }}
             * **Status:** Stable Release
             
             ### ✨ Catatan Versi:
-            - Berhasil di-build otomatis menggunakan GitHub Actions.
-            - Silakan unduh file APK di bawah ini untuk menginstalnya langsung di perangkat Android Anda.
+            - Berhasil di-build otomatis dari repository **${{ github.event.repository.name }}**.
+            - Silakan unduh file APK (`${{ env.APK_NAME }}`) di bawah ini untuk menginstalnya langsung di perangkat Android Anda.
           draft: false
           prerelease: false
