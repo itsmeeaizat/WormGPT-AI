@@ -4,6 +4,8 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import com.example.data.model.AttachedFile
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.InputStream
 import java.util.zip.ZipInputStream
 
@@ -15,8 +17,8 @@ object FilePickerHelper {
         "env", "yml", "yaml", "properties", "gradle", "go", "rs", "php", "rb", "swift", "asm"
     )
 
-    fun processUri(context: Context, uri: Uri): AttachedFile? {
-        return try {
+    suspend fun processUri(context: Context, uri: Uri): AttachedFile? = withContext(Dispatchers.IO) {
+        try {
             val contentResolver = context.contentResolver
             var fileName = "unknown_file"
             var fileSize: Long = 0
@@ -35,10 +37,19 @@ object FilePickerHelper {
             val formattedSize = formatFileSize(fileSize)
             val isTextFile = TEXT_EXTENSIONS.contains(ext) || mimeType.startsWith("text/") || mimeType.contains("json") || mimeType.contains("javascript") || mimeType.contains("xml")
 
-            val payload: String = if (isTextFile && fileSize < 5 * 1024 * 1024) { // Up to 5MB direct text read
-                contentResolver.openInputStream(uri)?.use { inputStream ->
+            if (isTextFile && fileSize < 5 * 1024 * 1024) { // Direct background text read & JS code inspection
+                val rawText = contentResolver.openInputStream(uri)?.use { inputStream ->
                     inputStream.bufferedReader().use { it.readText() }
                 } ?: "[Empty or unreadable text file]"
+
+                JsFileInspector.inspectContent(
+                    fileName = fileName,
+                    fileSize = fileSize,
+                    formattedSize = formattedSize,
+                    mimeType = mimeType,
+                    extension = ext,
+                    rawContent = rawText
+                )
             } else if (ext == "apk" || ext == "zip" || ext == "jar") {
                 // Archive file structure inspection
                 val entries = mutableListOf<String>()
@@ -59,7 +70,7 @@ object FilePickerHelper {
                     entries.add(" [Structure parsing note: Encrypted or specialized archive compression]")
                 }
 
-                buildString {
+                val archivePayload = buildString {
                     appendLine("ARCHIVE METADATA INSPECTION")
                     appendLine("File Name: $fileName")
                     appendLine("File Size: $formattedSize ($fileSize bytes)")
@@ -70,9 +81,20 @@ object FilePickerHelper {
                         entries.forEach { appendLine(it) }
                     }
                 }
+
+                AttachedFile(
+                    name = fileName,
+                    sizeBytes = fileSize,
+                    formattedSize = formattedSize,
+                    mimeType = mimeType,
+                    extension = ext,
+                    isText = false,
+                    contentPayload = archivePayload,
+                    inspectionSummary = archivePayload
+                )
             } else {
                 // Binary or large file metadata summary
-                buildString {
+                val binaryPayload = buildString {
                     appendLine("BINARY FILE ATTACHMENT DETAILS")
                     appendLine("File Name: $fileName")
                     appendLine("File Size: $formattedSize ($fileSize bytes)")
@@ -80,17 +102,18 @@ object FilePickerHelper {
                     appendLine("Extension: ${if (ext.isNotBlank()) ext else "none"}")
                     appendLine("Status: Binary stream attached for code audit and vulnerability context.")
                 }
-            }
 
-            AttachedFile(
-                name = fileName,
-                sizeBytes = fileSize,
-                formattedSize = formattedSize,
-                mimeType = mimeType,
-                extension = ext,
-                isText = isTextFile,
-                contentPayload = payload
-            )
+                AttachedFile(
+                    name = fileName,
+                    sizeBytes = fileSize,
+                    formattedSize = formattedSize,
+                    mimeType = mimeType,
+                    extension = ext,
+                    isText = isTextFile,
+                    contentPayload = binaryPayload,
+                    inspectionSummary = binaryPayload
+                )
+            }
         } catch (e: Exception) {
             e.printStackTrace()
             null
@@ -115,7 +138,8 @@ object FilePickerHelper {
             mimeType = "image/jpeg",
             extension = "jpg",
             isText = false,
-            contentPayload = payload
+            contentPayload = payload,
+            inspectionSummary = payload
         )
     }
 
@@ -184,7 +208,8 @@ object FilePickerHelper {
             mimeType = "application/gps-telemetry",
             extension = "gps",
             isText = true,
-            contentPayload = payload
+            contentPayload = payload,
+            inspectionSummary = payload
         )
     }
 

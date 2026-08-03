@@ -23,6 +23,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
         setContent {
             WormGptTheme {
                 var showSplash by remember { mutableStateOf(true) }
@@ -45,5 +46,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
+
 
 

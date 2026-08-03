@@ -5,10 +5,12 @@ import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.DEFAULT_CONFIG
 import com.example.data.db.ChatMessageEntity
 import com.example.data.db.ChatSessionEntity
 import com.example.data.db.WormGptDatabase
 import com.example.data.model.AttachedFile
+import com.example.data.model.ChatPersona
 import com.example.data.model.WormMode
 import com.example.data.repository.ChatRepository
 import com.example.util.FilePickerHelper
@@ -30,8 +32,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val sharedPreferences = application.getSharedPreferences("wormgpt_config", Context.MODE_PRIVATE)
 
     val currentMode = MutableStateFlow(WormMode.ALL_MODES[0])
+    val currentPersona = MutableStateFlow(ChatPersona.ALL_PERSONAS[0])
     val inputPrompt = MutableStateFlow("")
     val attachedFile = MutableStateFlow<AttachedFile?>(null)
+    val isFileProcessing = MutableStateFlow(false)
+    val fileProgressText = MutableStateFlow("")
     val isLoading = MutableStateFlow(false)
     val customApiKey = MutableStateFlow("")
     val groqApiKey = MutableStateFlow("")
@@ -39,6 +44,50 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val mistralApiKey = MutableStateFlow("")
     val selectedModel = MutableStateFlow("gemini-3.5-flash")
     val customModels = MutableStateFlow<List<com.example.data.model.CustomAiModel>>(emptyList())
+    val latestAiResponse = MutableStateFlow<String?>(null)
+
+    // Voice Engine & Voice Settings States
+    val selectedVoiceProvider = MutableStateFlow("gemini")
+    val selectedVoiceName = MutableStateFlow("Puck")
+    val elevenLabsApiKey = MutableStateFlow("")
+    val googleTtsApiKey = MutableStateFlow("")
+    val voiceSpeed = MutableStateFlow(1.0f)
+    val voicePitch = MutableStateFlow(1.0f)
+
+    fun saveVoiceProvider(provider: String) {
+        selectedVoiceProvider.value = provider
+        sharedPreferences.edit().putString("selected_voice_provider", provider).apply()
+    }
+
+    fun saveVoiceName(name: String) {
+        selectedVoiceName.value = name
+        sharedPreferences.edit().putString("selected_voice_name", name).apply()
+    }
+
+    fun saveElevenLabsApiKey(key: String) {
+        elevenLabsApiKey.value = key
+        sharedPreferences.edit().putString("elevenlabs_api_key", key).apply()
+    }
+
+    fun saveGoogleTtsApiKey(key: String) {
+        googleTtsApiKey.value = key
+        sharedPreferences.edit().putString("google_tts_api_key", key).apply()
+    }
+
+    fun saveVoiceSpeed(speed: Float) {
+        voiceSpeed.value = speed
+        sharedPreferences.edit().putFloat("voice_speed", speed).apply()
+    }
+
+    fun saveVoicePitch(pitch: Float) {
+        voicePitch.value = pitch
+        sharedPreferences.edit().putFloat("voice_pitch", pitch).apply()
+    }
+
+    fun saveSelectedPersona(persona: ChatPersona) {
+        currentPersona.value = persona
+        sharedPreferences.edit().putString("selected_persona_id", persona.id).apply()
+    }
 
     fun saveCustomApiKey(key: String) {
         customApiKey.value = key
@@ -75,6 +124,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     put("name", m.name)
                     put("apiKey", m.apiKey)
                     put("providerType", m.providerType)
+                    put("baseUrl", m.baseUrl)
                 }
                 jsonArray.put(obj)
             }
@@ -90,30 +140,67 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val activeMessages: StateFlow<List<ChatMessageEntity>>
 
     init {
-        // Auto-load configuration from SharedPreferences
-        customApiKey.value = sharedPreferences.getString("custom_api_key", "") ?: ""
-        groqApiKey.value = sharedPreferences.getString("groq_api_key", "") ?: ""
-        openRouterApiKey.value = sharedPreferences.getString("openrouter_api_key", "") ?: ""
-        mistralApiKey.value = sharedPreferences.getString("mistral_api_key", "") ?: ""
-        selectedModel.value = sharedPreferences.getString("selected_model", "gemini-3.5-flash") ?: "gemini-3.5-flash"
+        // Auto-load configuration from SharedPreferences or fallback to DEFAULT_CONFIG
+        val spCustomKey = sharedPreferences.getString("custom_api_key", "") ?: ""
+        customApiKey.value = if (spCustomKey.isNotBlank()) spCustomKey else DEFAULT_CONFIG.DEFAULT_GEMINI_API_KEY
+
+        val spGroqKey = sharedPreferences.getString("groq_api_key", "") ?: ""
+        groqApiKey.value = if (spGroqKey.isNotBlank()) spGroqKey else DEFAULT_CONFIG.DEFAULT_GROQ_API_KEY
+
+        val spOpenRouterKey = sharedPreferences.getString("openrouter_api_key", "") ?: ""
+        openRouterApiKey.value = if (spOpenRouterKey.isNotBlank()) spOpenRouterKey else DEFAULT_CONFIG.DEFAULT_OPENROUTER_API_KEY
+
+        val spMistralKey = sharedPreferences.getString("mistral_api_key", "") ?: ""
+        mistralApiKey.value = if (spMistralKey.isNotBlank()) spMistralKey else DEFAULT_CONFIG.DEFAULT_MISTRAL_API_KEY
+
+        val spSelectedModel = sharedPreferences.getString("selected_model", "") ?: ""
+        selectedModel.value = if (spSelectedModel.isNotBlank()) spSelectedModel else DEFAULT_CONFIG.DEFAULT_MODEL
+        
+        // Auto-load Voice Engine & Voice Options
+        val spVoiceProvider = sharedPreferences.getString("selected_voice_provider", "") ?: ""
+        selectedVoiceProvider.value = if (spVoiceProvider.isNotBlank()) spVoiceProvider else DEFAULT_CONFIG.DEFAULT_VOICE_PROVIDER
+
+        val spVoiceName = sharedPreferences.getString("selected_voice_name", "") ?: ""
+        selectedVoiceName.value = if (spVoiceName.isNotBlank()) spVoiceName else DEFAULT_CONFIG.DEFAULT_VOICE_NAME
+
+        val spElevenKey = sharedPreferences.getString("elevenlabs_api_key", "") ?: ""
+        elevenLabsApiKey.value = if (spElevenKey.isNotBlank()) spElevenKey else DEFAULT_CONFIG.DEFAULT_ELEVENLABS_API_KEY
+
+        val spGoogleTtsKey = sharedPreferences.getString("google_tts_api_key", "") ?: ""
+        googleTtsApiKey.value = if (spGoogleTtsKey.isNotBlank()) spGoogleTtsKey else DEFAULT_CONFIG.DEFAULT_GOOGLE_TTS_API_KEY
+
+        voiceSpeed.value = sharedPreferences.getFloat("voice_speed", 1.0f)
+        voicePitch.value = sharedPreferences.getFloat("voice_pitch", 1.0f)
+
+        val savedPersonaId = sharedPreferences.getString("selected_persona_id", "gen_z") ?: "gen_z"
+        currentPersona.value = ChatPersona.getById(savedPersonaId)
         
         val modelsJson = sharedPreferences.getString("custom_models_json", "[]") ?: "[]"
+        val loadedList = mutableListOf<com.example.data.model.CustomAiModel>()
         try {
             val jsonArray = org.json.JSONArray(modelsJson)
-            val list = mutableListOf<com.example.data.model.CustomAiModel>()
             for (i in 0 until jsonArray.length()) {
                 val obj = jsonArray.getJSONObject(i)
-                list.add(
+                loadedList.add(
                     com.example.data.model.CustomAiModel(
-                        id = obj.getString("id"),
-                        name = obj.getString("name"),
-                        apiKey = obj.getString("apiKey"),
-                        providerType = obj.getString("providerType")
+                        id = obj.optString("id"),
+                        name = obj.optString("name"),
+                        apiKey = obj.optString("apiKey"),
+                        providerType = obj.optString("providerType", "Groq"),
+                        baseUrl = obj.optString("baseUrl", "")
                     )
                 )
             }
-            customModels.value = list
         } catch (_: Exception) {}
+
+        // Auto-merge with DEFAULT_CONFIG.DEFAULT_CUSTOM_MODELS
+        val existingIds = loadedList.map { it.id }.toSet()
+        for (defaultModel in DEFAULT_CONFIG.DEFAULT_CUSTOM_MODELS) {
+            if (defaultModel.id !in existingIds) {
+                loadedList.add(defaultModel)
+            }
+        }
+        customModels.value = loadedList
 
         val db = WormGptDatabase.getDatabase(application)
         repository = ChatRepository(db.chatDao())
@@ -151,7 +238,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         repository.saveMessage(
             sessionId = newId,
             sender = "WORM_GPT",
-            content = "[SYS_OVERRIDE_ACTIVE]\nWormGPT V3.0 Hardened Shell initialized.\nMode: ${currentMode.value.name} (${currentMode.value.tag})\nReady for repository scanning, security analysis, or custom queries.",
+            content = "WormGPT V3.0 Hardened Shell initialized.\nMode: ${currentMode.value.name} (${currentMode.value.tag})",
             modeTag = currentMode.value.tag
         )
         
@@ -182,22 +269,34 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun attachFile(context: Context, uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
+            isFileProcessing.value = true
+            fileProgressText.value = "Reading & analyzing file content in background..."
             val file = FilePickerHelper.processUri(context, uri)
             attachedFile.value = file
+            isFileProcessing.value = false
+            fileProgressText.value = ""
         }
     }
 
     fun attachBitmap(bitmap: android.graphics.Bitmap) {
         viewModelScope.launch(Dispatchers.IO) {
+            isFileProcessing.value = true
+            fileProgressText.value = "Processing image capture..."
             val file = FilePickerHelper.processBitmap(bitmap)
             attachedFile.value = file
+            isFileProcessing.value = false
+            fileProgressText.value = ""
         }
     }
 
     fun attachLocationScan(latitude: Double, longitude: Double, accuracy: Float, altitude: Double = 0.0, provider: String = "GPS/Network", address: String = "") {
         viewModelScope.launch(Dispatchers.IO) {
+            isFileProcessing.value = true
+            fileProgressText.value = "Compiling GPS telemetry data..."
             val file = FilePickerHelper.processLocationScan(latitude, longitude, accuracy, altitude, provider, address)
             attachedFile.value = file
+            isFileProcessing.value = false
+            fileProgressText.value = ""
         }
     }
 
@@ -252,7 +351,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 openRouterApiKey = openRouterApiKey.value,
                 mistralApiKey = mistralApiKey.value,
                 selectedModel = selectedModel.value,
-                customModels = customModels.value
+                customModels = customModels.value,
+                attachedFile = currentAttached,
+                persona = currentPersona.value
             )
 
             result.onSuccess { replyText ->
@@ -262,6 +363,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     content = replyText,
                     modeTag = currentMode.value.tag
                 )
+                latestAiResponse.value = replyText
             }.onFailure { err ->
                 repository.saveMessage(
                     sessionId = sessionId,

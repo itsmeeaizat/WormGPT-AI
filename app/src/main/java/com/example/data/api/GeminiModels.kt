@@ -17,8 +17,22 @@ data class Content(
 )
 
 @JsonClass(generateAdapter = true)
+data class InlineData(
+    @Json(name = "mimeType") val mimeType: String,
+    @Json(name = "data") val data: String
+)
+
+@JsonClass(generateAdapter = true)
+data class FileData(
+    @Json(name = "mimeType") val mimeType: String,
+    @Json(name = "fileUri") val fileUri: String
+)
+
+@JsonClass(generateAdapter = true)
 data class Part(
-    @Json(name = "text") val text: String? = null
+    @Json(name = "text") val text: String? = null,
+    @Json(name = "inlineData") val inlineData: InlineData? = null,
+    @Json(name = "fileData") val fileData: FileData? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -47,3 +61,4 @@ data class ApiErrorDetail(
     @Json(name = "message") val message: String? = null,
     @Json(name = "status") val status: String? = null
 )
+

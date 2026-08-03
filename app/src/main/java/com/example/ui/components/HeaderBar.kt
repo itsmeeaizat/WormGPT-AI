@@ -9,6 +9,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,8 +24,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Icon
@@ -41,20 +45,19 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.model.ChatPersona
 import com.example.data.model.WormMode
 import com.example.ui.theme.WormGptBorderRed
 import com.example.ui.theme.WormGptRedAccent
 import com.example.ui.theme.WormGptRedDark
 import com.example.ui.theme.WormGptSurface
 
-import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.VolumeUp
-import androidx.compose.material.icons.filled.VolumeOff
-
 @Composable
 fun HeaderBar(
     currentMode: WormMode,
+    currentPersona: ChatPersona = ChatPersona.ALL_PERSONAS[0],
     onOpenModeSelector: () -> Unit,
+    onOpenPersonaSelector: () -> Unit = {},
     onOpenHistory: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenPermissions: () -> Unit,
@@ -165,65 +168,94 @@ fun HeaderBar(
             }
         }
 
-        // Action Buttons
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Spacer(modifier = Modifier.width(8.dp))
+
+        // Action Buttons (Horizontally Scrollable on Right)
+        Row(
+            modifier = Modifier
+                .weight(1f, fill = false)
+                .horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End)
+        ) {
+            IconButton(
+                onClick = onOpenPersonaSelector,
+                modifier = Modifier
+                    .size(32.dp)
+                    .background(Color(0xFF18181B), CircleShape)
+                    .border(0.5.dp, WormGptBorderRed.copy(alpha = 0.5f), CircleShape)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Face,
+                    contentDescription = "Gaya Obrolan AI Persona",
+                    tint = WormGptRedAccent,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+
             IconButton(
                 onClick = onOpenModeSelector,
                 modifier = Modifier
-                    .padding(end = 2.dp)
-                    .size(38.dp)
+                    .size(32.dp)
                     .background(Color(0xFF18181B), CircleShape)
                     .border(0.5.dp, WormGptBorderRed.copy(alpha = 0.5f), CircleShape)
             ) {
                 Icon(
                     imageVector = Icons.Default.Psychology,
                     contentDescription = "Switch Mode",
-                    tint = WormGptRedAccent,
-                    modifier = Modifier.size(20.dp)
+                    tint = Color(0xFFA1A1AA),
+                    modifier = Modifier.size(18.dp)
                 )
             }
 
             IconButton(
                 onClick = onOpenHistory,
                 modifier = Modifier
-                    .padding(end = 2.dp)
-                    .size(38.dp)
+                    .size(32.dp)
                     .background(Color(0xFF18181B), CircleShape)
             ) {
                 Icon(
                     imageVector = Icons.Default.History,
                     contentDescription = "Chat History",
                     tint = Color(0xFFA1A1AA),
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(18.dp)
                 )
             }
 
             IconButton(
                 onClick = onOpenPermissions,
                 modifier = Modifier
-                    .padding(end = 2.dp)
-                    .size(38.dp)
+                    .size(32.dp)
                     .background(Color(0xFF18181B), CircleShape)
             ) {
                 Icon(
                     imageVector = Icons.Default.Security,
                     contentDescription = "App Permissions",
                     tint = Color(0xFFA1A1AA),
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(18.dp)
                 )
             }
 
-
+            Box(
+                modifier = Modifier
+                    .padding(horizontal = 2.dp)
+                    .height(18.dp)
+                    .width(1.dp)
+                    .background(Color(0xFF27272A))
+            )
 
             IconButton(
                 onClick = onOpenSettings,
-                modifier = Modifier.size(38.dp)
+                modifier = Modifier
+                    .size(32.dp)
+                    .background(Color(0xFF27272A), CircleShape)
+                    .border(0.5.dp, WormGptBorderRed.copy(alpha = 0.7f), CircleShape)
             ) {
                 Icon(
                     imageVector = Icons.Default.Settings,
                     contentDescription = "Settings",
-                    tint = Color(0xFFA1A1AA),
-                    modifier = Modifier.size(20.dp)
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp)
                 )
             }
         }

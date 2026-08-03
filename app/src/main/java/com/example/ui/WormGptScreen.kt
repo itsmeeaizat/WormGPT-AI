@@ -50,6 +50,7 @@ import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -80,10 +81,13 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.components.AttachmentMenuSheet
 import com.example.ui.components.ChatMessageItem
+import com.example.ui.components.FileInspectorPreviewCard
 import com.example.ui.components.HeaderBar
 import com.example.ui.components.HistoryDrawer
 import com.example.ui.components.ModeSelectorSheet
 import com.example.ui.components.PermissionsDialog
+import com.example.ui.components.PersonaChipsBar
+import com.example.ui.components.PersonaSelectorSheet
 import com.example.ui.components.QuickPromptsBar
 import com.example.ui.components.SettingsDialog
 import com.example.ui.theme.WormGptBorderRed
@@ -98,6 +102,7 @@ fun WormGptScreen(
     modifier: Modifier = Modifier
 ) {
     val currentMode by viewModel.currentMode.collectAsStateWithLifecycle()
+    val currentPersona by viewModel.currentPersona.collectAsStateWithLifecycle()
     val inputPrompt by viewModel.inputPrompt.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
     val activeMessages by viewModel.activeMessages.collectAsStateWithLifecycle()
@@ -110,6 +115,16 @@ fun WormGptScreen(
     val selectedModel by viewModel.selectedModel.collectAsStateWithLifecycle()
     val customModels by viewModel.customModels.collectAsStateWithLifecycle()
     val attachedFile by viewModel.attachedFile.collectAsStateWithLifecycle()
+    val isFileProcessing by viewModel.isFileProcessing.collectAsStateWithLifecycle()
+    val fileProgressText by viewModel.fileProgressText.collectAsStateWithLifecycle()
+
+    // Voice Engine States
+    val selectedVoiceProvider by viewModel.selectedVoiceProvider.collectAsStateWithLifecycle()
+    val selectedVoiceName by viewModel.selectedVoiceName.collectAsStateWithLifecycle()
+    val elevenLabsApiKey by viewModel.elevenLabsApiKey.collectAsStateWithLifecycle()
+    val googleTtsApiKey by viewModel.googleTtsApiKey.collectAsStateWithLifecycle()
+    val voiceSpeed by viewModel.voiceSpeed.collectAsStateWithLifecycle()
+    val voicePitch by viewModel.voicePitch.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
 
@@ -172,63 +187,35 @@ fun WormGptScreen(
     }
 
     var showModeSheet by remember { mutableStateOf(false) }
+    var showPersonaSheet by remember { mutableStateOf(false) }
     var showHistorySheet by remember { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
     var showAttachmentMenuSheet by remember { mutableStateOf(false) }
     var showPermissionsDialog by remember { mutableStateOf(false) }
 
-    // Text-to-Speech (TTS) Indonesian Female Voice Setup
+    // AI Voice Manager Setup
     var ttsEnabled by remember { mutableStateOf(false) }
-    var ttsInstance by remember { mutableStateOf<android.speech.tts.TextToSpeech?>(null) }
+    val aiVoiceManager = remember(context) { com.example.util.AiVoiceManager(context) }
+    val isVoiceSpeaking by aiVoiceManager.isSpeaking.collectAsStateWithLifecycle()
+    val isVoiceLoadingAudio by aiVoiceManager.isLoadingAudio.collectAsStateWithLifecycle()
 
-    androidx.compose.runtime.LaunchedEffect(Unit) {
-        ttsInstance = android.speech.tts.TextToSpeech(context) { status ->
-            if (status == android.speech.tts.TextToSpeech.SUCCESS) {
-                val tts = ttsInstance ?: return@TextToSpeech
-                var res = tts.setLanguage(java.util.Locale("id", "ID"))
-                if (res == android.speech.tts.TextToSpeech.LANG_MISSING_DATA || res == android.speech.tts.TextToSpeech.LANG_NOT_SUPPORTED) {
-                    res = tts.setLanguage(java.util.Locale("in", "ID"))
-                }
-                if (res == android.speech.tts.TextToSpeech.LANG_MISSING_DATA || res == android.speech.tts.TextToSpeech.LANG_NOT_SUPPORTED) {
-                    res = tts.setLanguage(java.util.Locale("id"))
-                }
-                if (res == android.speech.tts.TextToSpeech.LANG_MISSING_DATA || res == android.speech.tts.TextToSpeech.LANG_NOT_SUPPORTED) {
-                    tts.setLanguage(java.util.Locale.getDefault())
-                }
-                try {
-                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                        val voices = tts.voices
-                        if (voices != null) {
-                            val femaleVoice = voices.firstOrNull { 
-                                it.locale.language.equals("id", ignoreCase = true) && 
-                                (it.name.lowercase().contains("female") || it.name.lowercase().contains("id-id") || it.name.lowercase().contains("wavenet") || it.name.lowercase().contains("id_id"))
-                            } ?: voices.firstOrNull { it.locale.language.equals("id", ignoreCase = true) }
-                            if (femaleVoice != null) {
-                                tts.voice = femaleVoice
-                            }
-                        }
-                    }
-                } catch (_: Exception) {}
-            }
-        }
-    }
-
-    androidx.compose.runtime.DisposableEffect(Unit) {
+    androidx.compose.runtime.DisposableEffect(aiVoiceManager) {
         onDispose {
-            try {
-                ttsInstance?.stop()
-                ttsInstance?.shutdown()
-            } catch (_: Exception) {}
+            aiVoiceManager.destroy()
         }
     }
 
     val speakAiResponse: (String) -> Unit = { text ->
-        if (ttsEnabled && ttsInstance != null && text.isNotBlank()) {
-            try {
-                val cleanText = text.replace(Regex("```[\\s\\S]*?```"), " kode program ")
-                    .replace(Regex("[#*`_\\[\\]()]"), "")
-                ttsInstance?.speak(cleanText, android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, "tts_ai_id")
-            } catch (_: Exception) {}
+        if (ttsEnabled && text.isNotBlank()) {
+            aiVoiceManager.speak(
+                text = text,
+                provider = selectedVoiceProvider,
+                voiceName = selectedVoiceName,
+                elevenLabsKey = elevenLabsApiKey,
+                googleCloudKey = googleTtsApiKey,
+                speed = voiceSpeed,
+                pitch = voicePitch
+            )
         }
     }
 
@@ -246,6 +233,7 @@ fun WormGptScreen(
     }
 
     val modeSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val personaSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val historySheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val attachmentMenuSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val listState = rememberLazyListState()
@@ -267,7 +255,9 @@ fun WormGptScreen(
         topBar = {
             HeaderBar(
                 currentMode = currentMode,
+                currentPersona = currentPersona,
                 onOpenModeSelector = { showModeSheet = true },
+                onOpenPersonaSelector = { showPersonaSheet = true },
                 onOpenHistory = { showHistorySheet = true },
                 onOpenSettings = { showSettingsDialog = true },
                 onOpenPermissions = { showPermissionsDialog = true }
@@ -282,64 +272,62 @@ fun WormGptScreen(
                     .windowInsetsPadding(WindowInsets.navigationBars)
                     .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
-                // Attached file preview badge banner
-                if (attachedFile != null) {
+                // File reading background progress indicator
+                if (isFileProcessing) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(bottom = 6.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFF27272A))
-                            .border(0.5.dp, WormGptRedAccent, RoundedCornerShape(10.dp))
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                            .padding(bottom = 8.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFF18181B))
+                            .border(1.dp, WormGptRedAccent, RoundedCornerShape(12.dp))
+                            .padding(12.dp)
                     ) {
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.InsertDriveFile,
-                                    contentDescription = null,
-                                    tint = WormGptRedAccent,
-                                    modifier = Modifier.size(18.dp)
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                color = WormGptRedAccent,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "READING FILE IN BACKGROUND...",
+                                    color = Color.White,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
                                 )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Column {
-                                    Text(
-                                        text = attachedFile!!.name,
-                                        color = Color.White,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = "${attachedFile!!.formattedSize} • ${attachedFile!!.mimeType}",
-                                        color = Color(0xFFA1A1AA),
-                                        fontSize = 10.sp,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                }
-                            }
-                            IconButton(
-                                onClick = { viewModel.removeAttachedFile() },
-                                modifier = Modifier.size(28.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Remove file",
-                                    tint = Color(0xFFEF4444),
-                                    modifier = Modifier.size(16.dp)
+                                Text(
+                                    text = fileProgressText.ifBlank { "Parsing code structure, AST, and functions..." },
+                                    color = Color(0xFFA1A1AA),
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace
                                 )
                             }
                         }
                     }
                 }
+
+                // Attached file preview badge banner
+                if (attachedFile != null) {
+                    FileInspectorPreviewCard(
+                        attachedFile = attachedFile!!,
+                        onRemove = { viewModel.removeAttachedFile() },
+                        onSendAnalysis = { prompt -> viewModel.sendMessage(prompt) },
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
+
+                // Chat Persona Selector Chips Row
+                PersonaChipsBar(
+                    currentPersona = currentPersona,
+                    onSelectPersona = { persona ->
+                        viewModel.saveSelectedPersona(persona)
+                    }
+                )
 
                 // Quick Presets Row
                 QuickPromptsBar(
@@ -403,13 +391,11 @@ fun WormGptScreen(
                         onClick = {
                             ttsEnabled = !ttsEnabled
                             if (!ttsEnabled) {
-                                try { ttsInstance?.stop() } catch (_: Exception) {}
-                                Toast.makeText(context, "Voice TTS Dimatikan", Toast.LENGTH_SHORT).show()
+                                aiVoiceManager.stop()
+                                Toast.makeText(context, "Voice AI Dimatikan", Toast.LENGTH_SHORT).show()
                             } else {
-                                Toast.makeText(context, "Voice TTS Diaktifkan (Suara AI Indonesia)", Toast.LENGTH_SHORT).show()
-                                try {
-                                    ttsInstance?.speak("Suara AI diaktifkan", android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, "tts_test")
-                                } catch (_: Exception) {}
+                                Toast.makeText(context, "Voice AI Diaktifkan ($selectedVoiceProvider: $selectedVoiceName)", Toast.LENGTH_SHORT).show()
+                                speakAiResponse("Suara AI diaktifkan. Mode $selectedVoiceProvider dengan variasi suara $selectedVoiceName.")
                             }
                         },
                         modifier = Modifier
@@ -424,12 +410,20 @@ fun WormGptScreen(
                                 shape = RoundedCornerShape(14.dp)
                             )
                     ) {
-                        Icon(
-                            imageVector = if (ttsEnabled) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
-                            contentDescription = "Toggle TTS Voice",
-                            tint = if (ttsEnabled) WormGptRedAccent else Color(0xFFA1A1AA),
-                            modifier = Modifier.size(20.dp)
-                        )
+                        if (isVoiceLoadingAudio) {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                color = WormGptRedAccent,
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(
+                                imageVector = if (ttsEnabled) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
+                                contentDescription = "Toggle TTS Voice",
+                                tint = if (isVoiceSpeaking) Color(0xFF10B981) else if (ttsEnabled) WormGptRedAccent else Color(0xFFA1A1AA),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
 
                     Spacer(modifier = Modifier.width(6.dp))
@@ -530,6 +524,15 @@ fun WormGptScreen(
     }
 
     // Modal Bottom Sheets & Dialogs
+    if (showPersonaSheet) {
+        PersonaSelectorSheet(
+            currentPersona = currentPersona,
+            onSelectPersona = { persona -> viewModel.saveSelectedPersona(persona) },
+            onDismiss = { showPersonaSheet = false },
+            sheetState = personaSheetState
+        )
+    }
+
     if (showModeSheet) {
         ModeSelectorSheet(
             currentMode = currentMode,
@@ -563,12 +566,22 @@ fun WormGptScreen(
             mistralApiKey = mistralApiKey,
             selectedModel = selectedModel,
             customModels = customModels,
+            currentPersona = currentPersona,
+            selectedVoiceProvider = selectedVoiceProvider,
+            selectedVoiceName = selectedVoiceName,
+            elevenLabsApiKey = elevenLabsApiKey,
+            googleTtsApiKey = googleTtsApiKey,
             onSaveApiKey = { key -> viewModel.saveCustomApiKey(key) },
             onSaveGroqApiKey = { key -> viewModel.saveGroqApiKey(key) },
             onSaveOpenRouterApiKey = { key -> viewModel.saveOpenRouterApiKey(key) },
             onSaveMistralApiKey = { key -> viewModel.saveMistralApiKey(key) },
             onSaveModel = { model -> viewModel.saveSelectedModel(model) },
             onSaveCustomModels = { models -> viewModel.saveCustomModels(models) },
+            onSavePersona = { persona -> viewModel.saveSelectedPersona(persona) },
+            onSaveVoiceProvider = { provider -> viewModel.saveVoiceProvider(provider) },
+            onSaveVoiceName = { name -> viewModel.saveVoiceName(name) },
+            onSaveElevenLabsApiKey = { key -> viewModel.saveElevenLabsApiKey(key) },
+            onSaveGoogleTtsApiKey = { key -> viewModel.saveGoogleTtsApiKey(key) },
             onDismiss = { showSettingsDialog = false }
         )
     }
