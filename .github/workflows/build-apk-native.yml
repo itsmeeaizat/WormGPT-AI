@@ -60,6 +60,8 @@ jobs:
           echo "Package ID berhasil diubah menjadi: $NEW_PACKAGE_ID"
           
       - name: Build Debug APK with Gradle
+        env:
+          BUILD_NUMBER: ${{ github.run_number }} # Ini kuncinya!
         run: ./gradlew assembleDebug --no-daemon -Pkotlin.incremental=false
 
       - name: Extract App Version and Setup Metadata
