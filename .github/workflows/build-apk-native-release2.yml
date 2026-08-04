@@ -62,29 +62,15 @@ jobs:
       - name: Build Debug APK with Gradle
         run: ./gradlew assembleDebug --no-daemon -Pkotlin.incremental=false
 
-      - name: Extract App Version and Setup Metadata
-        id: metadata
+      - name: Auto-Update Version in Gradle
         run: |
-          REPO_NAME="${{ github.event.repository.name }}"
+          # Ganti versionCode
+          sed -i "s/versionCode = [0-9]*/versionCode = ${{ github.run_number }}/g" app/build.gradle.kts
           
-          # Mengambil versionName secara otomatis dari defaultConfig di build.gradle / build.gradle.kts jika ada
-          VERSION_NAME=$(grep -m 1 "versionName" app/build.gradle* 2>/dev/null | tr -d ' "versionName=' || echo "1.0.${{ github.run_number }}")
-          if [ -z "$VERSION_NAME" ]; then
-            VERSION_NAME="1.0.${{ github.run_number }}"
-          fi
+          # Ganti versionName
+          sed -i "s/versionName = \".*\"/versionName = \"1.0.${{ github.run_number }}\"/g" app/build.gradle.kts
           
-          APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
-          
-          if [ -f "$APK_PATH" ]; then
-            NEW_NAME="${REPO_NAME}-${VERSION_NAME}-debug.apk"
-            cp "$APK_PATH" "$NEW_NAME"
-            echo "APK_NAME=$NEW_NAME" >> $GITHUB_ENV
-            echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_ENV
-            echo "APK berhasil di-rename menjadi: $NEW_NAME dengan versi $VERSION_NAME"
-          else
-            echo "File APK tidak ditemukan!"
-            exit 1
-          fi
+          echo "Versi berhasil diupdate ke 1.0.${{ github.run_number }}"
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
