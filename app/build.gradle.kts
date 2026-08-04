@@ -13,16 +13,17 @@ android {
   namespace = "com.example"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
-  defaultConfig {
+    defaultConfig {
     applicationId = "com.aistudio.wormgpt.secx"
     minSdk = 24
     targetSdk = 36
-    versionCode = 1
-    versionName = "1.0"
+    
+    // Ganti jadi ini ya kakak sayang! 🎀
+    versionCode = (System.getenv("BUILD_NUMBER")?.toIntOrNull() ?: 1)
+    versionName = "1.0.${System.getenv("BUILD_NUMBER") ?: "0"}"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
-
   signingConfigs {
     create("release") {
       val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
