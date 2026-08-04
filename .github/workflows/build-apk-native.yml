@@ -47,9 +47,9 @@ jobs:
           -dname "CN=Aizat, O=Personal Developer, C=ID"
           cp ~/.android/debug.keystore ./debug.keystore
 
-            - name: Rename Package ID
+      - name: Rename Package ID
         run: |
-          NEW_PACKAGE_ID="com.wormgpt.secx1" # Ganti sesuka kakak!
+          NEW_PACKAGE_ID="com.wormgpt.secx1"
           
           # Ganti package di build.gradle.kts (app module)
           sed -i "s/applicationId = \".*\"/applicationId = \"$NEW_PACKAGE_ID\"/g" app/build.gradle.kts
