@@ -42,6 +42,7 @@ import com.example.ui.theme.WormGptRedAccent
 @Composable
 fun PersonaSelectorSheet(
     currentPersona: ChatPersona,
+    allPersonas: List<ChatPersona> = ChatPersona.DEFAULT_PERSONAS,
     onSelectPersona: (ChatPersona) -> Unit,
     onDismiss: () -> Unit,
     sheetState: SheetState
@@ -49,8 +50,8 @@ fun PersonaSelectorSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = Color(0xFF18181B),
-        scrimColor = Color.Black.copy(alpha = 0.7f)
+        containerColor = Color.White,
+        scrimColor = Color.Black.copy(alpha = 0.4f)
     ) {
         Column(
             modifier = Modifier
@@ -64,20 +65,20 @@ fun PersonaSelectorSheet(
                 Icon(
                     imageVector = Icons.Default.Face,
                     contentDescription = null,
-                    tint = WormGptRedAccent,
+                    tint = Color(0xFF10A37F),
                     modifier = Modifier.size(24.dp)
                 )
                 Spacer(modifier = Modifier.width(10.dp))
                 Column {
                     Text(
                         text = "Pilihan Gaya Obrolan (AI Persona)",
-                        color = Color.White,
+                        color = Color(0xFF0F0F0F),
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
                         text = "Pilih persona gaya bahasa & ekspresi emoji balasan AI",
-                        color = Color(0xFFA1A1AA),
+                        color = Color(0xFF6E6E80),
                         fontSize = 12.sp
                     )
                 }
@@ -89,7 +90,7 @@ fun PersonaSelectorSheet(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.padding(bottom = 24.dp)
             ) {
-                items(ChatPersona.ALL_PERSONAS) { persona ->
+                items(allPersonas, key = { it.id }) { persona ->
                     val isSelected = persona.id == currentPersona.id
 
                     Box(
@@ -97,11 +98,11 @@ fun PersonaSelectorSheet(
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(14.dp))
                             .background(
-                                if (isSelected) Color(0xFF27272A) else Color(0xFF09090B)
+                                if (isSelected) Color(0xFFE6F4F1) else Color(0xFFF4F4F5)
                             )
                             .border(
-                                width = if (isSelected) 1.dp else 0.5.dp,
-                                color = if (isSelected) WormGptRedAccent else WormGptBorderRed.copy(alpha = 0.3f),
+                                width = if (isSelected) 1.5.dp else 0.5.dp,
+                                color = if (isSelected) Color(0xFF10A37F) else Color(0xFFE5E5E5),
                                 shape = RoundedCornerShape(14.dp)
                             )
                             .clickable {
@@ -119,7 +120,7 @@ fun PersonaSelectorSheet(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
                                         text = persona.name,
-                                        color = Color.White,
+                                        color = Color(0xFF0F0F0F),
                                         fontSize = 15.sp,
                                         fontWeight = FontWeight.Bold
                                     )
@@ -127,14 +128,14 @@ fun PersonaSelectorSheet(
                                     Box(
                                         modifier = Modifier
                                             .background(
-                                                Color(0xFF3F3F46),
+                                                Color(0xFF10A37F).copy(alpha = 0.15f),
                                                 RoundedCornerShape(4.dp)
                                             )
                                             .padding(horizontal = 6.dp, vertical = 2.dp)
                                     ) {
                                         Text(
                                             text = persona.tag,
-                                            color = WormGptRedAccent,
+                                            color = Color(0xFF10A37F),
                                             fontSize = 9.sp,
                                             fontFamily = FontFamily.Monospace,
                                             fontWeight = FontWeight.Bold
@@ -143,14 +144,14 @@ fun PersonaSelectorSheet(
                                 }
                                 Text(
                                     text = persona.description,
-                                    color = Color(0xFFA1A1AA),
+                                    color = Color(0xFF5D5D6D),
                                     fontSize = 12.sp,
                                     lineHeight = 16.sp,
                                     modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
                                 )
                                 Text(
                                     text = "Ekspresi Emoji: ${persona.sampleEmoji}",
-                                    color = Color(0xFFE4E4E7),
+                                    color = Color(0xFF2D2D2D),
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Medium
                                 )
@@ -160,7 +161,7 @@ fun PersonaSelectorSheet(
                                 Box(
                                     modifier = Modifier
                                         .size(24.dp)
-                                        .background(WormGptRedAccent, CircleShape),
+                                        .background(Color(0xFF10A37F), CircleShape),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(

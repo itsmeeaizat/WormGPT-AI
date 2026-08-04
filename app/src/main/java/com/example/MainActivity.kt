@@ -20,6 +20,14 @@ import com.example.ui.theme.WormGptTheme
 class MainActivity : ComponentActivity() {
     private val chatViewModel: ChatViewModel by viewModels()
 
+    override fun attachBaseContext(newBase: android.content.Context) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            super.attachBaseContext(newBase.createAttributionContext("default"))
+        } else {
+            super.attachBaseContext(newBase)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()

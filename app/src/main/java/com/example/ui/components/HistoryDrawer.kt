@@ -58,8 +58,8 @@ fun HistoryDrawer(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = Color(0xFF18181B),
-        scrimColor = Color.Black.copy(alpha = 0.7f)
+        containerColor = Color.White,
+        scrimColor = Color.Black.copy(alpha = 0.4f)
     ) {
         Column(
             modifier = Modifier
@@ -75,13 +75,13 @@ fun HistoryDrawer(
                     Icon(
                         imageVector = Icons.Default.History,
                         contentDescription = null,
-                        tint = WormGptRedAccent,
+                        tint = Color(0xFF10A37F),
                         modifier = Modifier.size(22.dp)
                     )
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = "Saved Cyber Sessions",
-                        color = Color.White,
+                        text = "Riwayat Obrolan",
+                        color = Color(0xFF0F0F0F),
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -91,7 +91,7 @@ fun HistoryDrawer(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
-                        .background(WormGptRedAccent)
+                        .background(Color(0xFF10A37F))
                         .clickable {
                             onNewSession()
                             onDismiss()
@@ -107,11 +107,10 @@ fun HistoryDrawer(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "NEW CHAT",
+                            text = "CHAT BARU",
                             color = Color.White,
                             fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 }
@@ -127,8 +126,8 @@ fun HistoryDrawer(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "No saved sessions yet.",
-                        color = Color(0xFFA1A1AA),
+                        text = "Belum ada riwayat obrolan.",
+                        color = Color(0xFF6E6E80),
                         fontSize = 13.sp
                     )
                 }
@@ -145,10 +144,10 @@ fun HistoryDrawer(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(12.dp))
-                                .background(if (isActive) Color(0xFF27272A) else Color(0xFF09090B))
+                                .background(if (isActive) Color(0xFFE6F4F1) else Color(0xFFF4F4F5))
                                 .border(
-                                    width = if (isActive) 1.dp else 0.5.dp,
-                                    color = if (isActive) WormGptRedAccent else WormGptBorderRed.copy(alpha = 0.3f),
+                                    width = if (isActive) 1.5.dp else 0.5.dp,
+                                    color = if (isActive) Color(0xFF10A37F) else Color(0xFFE5E5E5),
                                     shape = RoundedCornerShape(12.dp)
                                 )
                                 .clickable {
@@ -169,14 +168,14 @@ fun HistoryDrawer(
                                     Icon(
                                         imageVector = Icons.Default.Terminal,
                                         contentDescription = null,
-                                        tint = if (isActive) WormGptRedAccent else Color(0xFFA1A1AA),
+                                        tint = if (isActive) Color(0xFF10A37F) else Color(0xFF6E6E80),
                                         modifier = Modifier.size(18.dp)
                                     )
                                     Spacer(modifier = Modifier.width(10.dp))
                                     Column {
                                         Text(
                                             text = session.title,
-                                            color = Color.White,
+                                            color = Color(0xFF0F0F0F),
                                             fontSize = 14.sp,
                                             fontWeight = FontWeight.SemiBold,
                                             maxLines = 1,
@@ -184,7 +183,7 @@ fun HistoryDrawer(
                                         )
                                         Text(
                                             text = dateFormatted,
-                                            color = Color(0xFF71717A),
+                                            color = Color(0xFF6E6E80),
                                             fontSize = 10.sp,
                                             fontFamily = FontFamily.Monospace
                                         )
@@ -198,7 +197,7 @@ fun HistoryDrawer(
                                     Icon(
                                         imageVector = Icons.Default.Delete,
                                         contentDescription = "Delete Session",
-                                        tint = Color(0xFF71717A),
+                                        tint = Color(0xFF6E6E80),
                                         modifier = Modifier.size(16.dp)
                                     )
                                 }

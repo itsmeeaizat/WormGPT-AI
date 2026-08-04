@@ -213,6 +213,14 @@ object FilePickerHelper {
         )
     }
 
+    fun createSpeechToTextIntent(): android.content.Intent {
+        return android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, java.util.Locale.getDefault())
+            putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Bicara sekarang...")
+        }
+    }
+
     private fun formatFileSize(bytes: Long): String {
         if (bytes <= 0) return "0 B"
         val units = arrayOf("B", "KB", "MB", "GB", "TB")

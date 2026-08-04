@@ -29,6 +29,7 @@ import com.example.ui.theme.WormGptRedAccent
 @Composable
 fun PersonaChipsBar(
     currentPersona: ChatPersona,
+    allPersonas: List<ChatPersona> = ChatPersona.DEFAULT_PERSONAS,
     onSelectPersona: (ChatPersona) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -39,7 +40,7 @@ fun PersonaChipsBar(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        items(ChatPersona.ALL_PERSONAS) { persona ->
+        items(allPersonas, key = { it.id }) { persona ->
             val isSelected = persona.id == currentPersona.id
 
             Box(

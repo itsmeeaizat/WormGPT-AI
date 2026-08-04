@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -50,7 +51,8 @@ fun SettingsDialog(
     mistralApiKey: String = "",
     selectedModel: String,
     customModels: List<CustomAiModel> = emptyList(),
-    currentPersona: ChatPersona = ChatPersona.ALL_PERSONAS[0],
+    currentPersona: ChatPersona = ChatPersona.DEFAULT_PERSONAS[0],
+    allPersonas: List<ChatPersona> = ChatPersona.DEFAULT_PERSONAS,
     selectedVoiceProvider: String = "gemini",
     selectedVoiceName: String = "Puck",
     elevenLabsApiKey: String = "",
@@ -62,10 +64,13 @@ fun SettingsDialog(
     onSaveModel: (String) -> Unit,
     onSaveCustomModels: (List<CustomAiModel>) -> Unit = {},
     onSavePersona: (ChatPersona) -> Unit = {},
+    onAddCustomPersona: (String, String, String, String) -> Unit = { _, _, _, _ -> },
+    onDeleteCustomPersona: (String) -> Unit = {},
     onSaveVoiceProvider: (String) -> Unit = {},
     onSaveVoiceName: (String) -> Unit = {},
     onSaveElevenLabsApiKey: (String) -> Unit = {},
     onSaveGoogleTtsApiKey: (String) -> Unit = {},
+    onTestVoice: ((String, String, String, String) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     var geminiKeyText by remember { mutableStateOf(customApiKey) }
@@ -75,6 +80,13 @@ fun SettingsDialog(
     var currentSelectedModel by remember { mutableStateOf(selectedModel) }
     var customModelsList by remember { mutableStateOf(customModels) }
     var selectedPersona by remember { mutableStateOf(currentPersona) }
+
+    // Custom Persona Builder State
+    var isCreatingPersona by remember { mutableStateOf(false) }
+    var newPersonaName by remember { mutableStateOf("") }
+    var newPersonaDesc by remember { mutableStateOf("") }
+    var newPersonaEmoji by remember { mutableStateOf("") }
+    var newPersonaPrompt by remember { mutableStateOf("") }
 
     // Voice Settings States
     var voiceProvider by remember { mutableStateOf(selectedVoiceProvider) }
@@ -122,8 +134,8 @@ fun SettingsDialog(
                 .fillMaxWidth()
                 .fillMaxHeight(0.85f)
                 .clip(RoundedCornerShape(18.dp))
-                .background(Color(0xFF18181B))
-                .border(1.dp, WormGptBorderRed, RoundedCornerShape(18.dp))
+                .background(Color.White)
+                .border(1.dp, Color(0xFFE5E5E5), RoundedCornerShape(18.dp))
                 .padding(20.dp)
         ) {
             Column(
@@ -138,13 +150,13 @@ fun SettingsDialog(
                     Icon(
                         imageVector = Icons.Default.Settings,
                         contentDescription = null,
-                        tint = WormGptRedAccent,
+                        tint = Color(0xFF10A37F),
                         modifier = Modifier.size(22.dp)
                     )
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = "WormGPT Multi-AI System Config",
-                        color = Color.White,
+                        text = "Pengaturan Sistem AI",
+                        color = Color(0xFF0F0F0F),
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -153,22 +165,21 @@ fun SettingsDialog(
                 // Owner Settings Protected Access Button
                 Button(
                     onClick = { showOwnerLogin = true },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF27272A)),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF4F4F5)),
                     shape = RoundedCornerShape(8.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Icon(
                         imageVector = Icons.Default.CheckCircle,
                         contentDescription = null,
-                        tint = WormGptRedAccent,
+                        tint = Color(0xFF10A37F),
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = "🔒 Owner Settings",
-                        color = Color.White,
+                        color = Color(0xFF0F0F0F),
                         fontSize = 12.sp,
-                        fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Bold
                     )
                 }
@@ -181,20 +192,20 @@ fun SettingsDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xFF09090B))
+                        .background(Color(0xFFF4F4F5))
                         .padding(10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
                         imageVector = Icons.Default.CheckCircle,
                         contentDescription = null,
-                        tint = if (isSecretInjected || geminiKeyText.isNotBlank()) Color(0xFF10B981) else Color(0xFFE11D48),
+                        tint = if (isSecretInjected || geminiKeyText.isNotBlank()) Color(0xFF10A37F) else Color(0xFFE11D48),
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = if (isSecretInjected || geminiKeyText.isNotBlank()) "Global Gemini Key Active" else "Global Gemini Key Missing (Optional if using Free/Other AI)",
-                        color = if (isSecretInjected || geminiKeyText.isNotBlank()) Color(0xFF10B981) else Color(0xFFF43F5E),
+                        color = if (isSecretInjected || geminiKeyText.isNotBlank()) Color(0xFF10A37F) else Color(0xFFF43F5E),
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace
                     )
@@ -219,7 +230,7 @@ fun SettingsDialog(
                         .background(Color(0xFF09090B))
                         .padding(8.dp)
                 ) {
-                    ChatPersona.ALL_PERSONAS.forEach { persona ->
+                    allPersonas.forEach { persona ->
                         val isSelected = persona.id == selectedPersona.id
                         Row(
                             modifier = Modifier
@@ -246,12 +257,23 @@ fun SettingsDialog(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = persona.name,
-                                    color = Color.White,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = persona.name,
+                                        color = Color.White,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    if (persona.isCustom) {
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "(Kustom)",
+                                            color = Color(0xFF10A37F),
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
                                 Text(
                                     text = persona.description,
                                     color = Color(0xFFA1A1AA),
@@ -261,8 +283,151 @@ fun SettingsDialog(
                             Text(
                                 text = persona.sampleEmoji,
                                 fontSize = 12.sp,
-                                modifier = Modifier.padding(start = 4.dp)
+                                modifier = Modifier.padding(start = 4.dp, end = 4.dp)
                             )
+                            if (persona.isCustom) {
+                                IconButton(
+                                    onClick = { onDeleteCustomPersona(persona.id) },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = "Hapus Persona",
+                                        tint = Color(0xFFEF4444),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Toggle Custom Persona Builder Button
+                Button(
+                    onClick = { isCreatingPersona = !isCreatingPersona },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF18181B)
+                    ),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = if (isCreatingPersona) Icons.Default.Edit else Icons.Default.Add,
+                        contentDescription = null,
+                        tint = Color(0xFF10A37F),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (isCreatingPersona) "TUTUP FORM PERSONA KUSTOM" else "+ BUAT PERSONA KUSTOM BARU",
+                        color = Color(0xFF10A37F),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                if (isCreatingPersona) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFF18181B))
+                            .border(1.dp, Color(0xFF27272A), RoundedCornerShape(10.dp))
+                            .padding(12.dp)
+                    ) {
+                        Text(
+                            text = "CUSTOM PERSONA BUILDER (ZERO-KEYWORD)",
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text("Judul / Nama Persona (misal: Anak Kecil, Dark Persona)", color = Color(0xFFA1A1AA), fontSize = 11.sp)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        BasicTextField(
+                            value = newPersonaName,
+                            onValueChange = { newPersonaName = it },
+                            textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 13.sp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF09090B), RoundedCornerShape(6.dp))
+                                .border(0.5.dp, Color(0xFF3F3F46), RoundedCornerShape(6.dp))
+                                .padding(10.dp)
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text("Deskripsi Ciri Khas Singkat", color = Color(0xFFA1A1AA), fontSize = 11.sp)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        BasicTextField(
+                            value = newPersonaDesc,
+                            onValueChange = { newPersonaDesc = it },
+                            textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 13.sp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF09090B), RoundedCornerShape(6.dp))
+                                .border(0.5.dp, Color(0xFF3F3F46), RoundedCornerShape(6.dp))
+                                .padding(10.dp)
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text("Contoh Emoji Ekspresi (misal: ✨ 🧸 ⚡)", color = Color(0xFFA1A1AA), fontSize = 11.sp)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        BasicTextField(
+                            value = newPersonaEmoji,
+                            onValueChange = { newPersonaEmoji = it },
+                            textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 13.sp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF09090B), RoundedCornerShape(6.dp))
+                                .border(0.5.dp, Color(0xFF3F3F46), RoundedCornerShape(6.dp))
+                                .padding(10.dp)
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text("Prompt & Karakter Organik (Tanpa kata wajib)", color = Color(0xFFA1A1AA), fontSize = 11.sp)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text("Jelaskan gaya bicaranya. AI akan mengekspresikannya secara alami tanpa mengulang kata wajib.", color = Color(0xFF71717A), fontSize = 10.sp)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        BasicTextField(
+                            value = newPersonaPrompt,
+                            onValueChange = { newPersonaPrompt = it },
+                            textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 12.sp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(90.dp)
+                                .background(Color(0xFF09090B), RoundedCornerShape(6.dp))
+                                .border(0.5.dp, Color(0xFF3F3F46), RoundedCornerShape(6.dp))
+                                .padding(10.dp)
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Button(
+                            onClick = {
+                                if (newPersonaName.isNotBlank() && newPersonaPrompt.isNotBlank()) {
+                                    onAddCustomPersona(newPersonaName, newPersonaDesc, newPersonaPrompt, newPersonaEmoji)
+                                    newPersonaName = ""
+                                    newPersonaDesc = ""
+                                    newPersonaEmoji = ""
+                                    newPersonaPrompt = ""
+                                    isCreatingPersona = false
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF10A37F)
+                            ),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("SIMPAN PERSONA KUSTOM", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -563,6 +728,31 @@ fun SettingsDialog(
                             value = googleTtsKeyText,
                             isPassword = true,
                             onValueChange = { googleTtsKeyText = it }
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Button(
+                        onClick = {
+                            onTestVoice?.invoke(voiceProvider, voiceName, elevenKeyText, googleTtsKeyText)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE6F4F1)),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.VolumeUp,
+                            contentDescription = null,
+                            tint = Color(0xFF10A37F),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "🔊 UJI SUARA SEKARANG",
+                            color = Color(0xFF10A37F),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 }

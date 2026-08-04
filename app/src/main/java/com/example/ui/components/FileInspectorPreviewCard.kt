@@ -64,8 +64,8 @@ fun FileInspectorPreviewCard(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(Color(0xFF121214))
-            .border(1.dp, WormGptRedAccent.copy(alpha = 0.8f), RoundedCornerShape(16.dp))
+            .background(Color(0xFFF4F4F5))
+            .border(1.dp, Color(0xFF10A37F), RoundedCornerShape(16.dp))
             .padding(12.dp)
     ) {
         Column {
@@ -83,13 +83,13 @@ fun FileInspectorPreviewCard(
                         modifier = Modifier
                             .size(36.dp)
                             .clip(RoundedCornerShape(10.dp))
-                            .background(WormGptRedDark),
+                            .background(Color(0xFFE6F4F1)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.Code,
                             contentDescription = "JS Code Inspector",
-                            tint = WormGptRedAccent,
+                            tint = Color(0xFF10A37F),
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -100,7 +100,7 @@ fun FileInspectorPreviewCard(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 text = attachedFile.name,
-                                color = Color.White,
+                                color = Color(0xFF0F0F0F),
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1,
@@ -110,7 +110,7 @@ fun FileInspectorPreviewCard(
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(4.dp))
-                                    .background(WormGptRedAccent)
+                                    .background(Color(0xFF10A37F))
                                     .padding(horizontal = 4.dp, vertical = 1.dp)
                             ) {
                                 Text(
@@ -125,7 +125,7 @@ fun FileInspectorPreviewCard(
 
                         Text(
                             text = "${attachedFile.formattedSize} • ${attachedFile.lineCount} lines",
-                            color = Color(0xFFA1A1AA),
+                            color = Color(0xFF6E6E80),
                             fontSize = 10.sp,
                             fontFamily = FontFamily.Monospace
                         )

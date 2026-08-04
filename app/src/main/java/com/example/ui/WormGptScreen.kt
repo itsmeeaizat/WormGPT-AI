@@ -44,9 +44,12 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.InsertDriveFile
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.VolumeOff
@@ -89,6 +92,7 @@ import com.example.ui.components.PermissionsDialog
 import com.example.ui.components.PersonaChipsBar
 import com.example.ui.components.PersonaSelectorSheet
 import com.example.ui.components.QuickPromptsBar
+import com.example.ui.components.QuoteReplyPreviewCard
 import com.example.ui.components.SettingsDialog
 import com.example.ui.theme.WormGptBorderRed
 import com.example.ui.theme.WormGptRedAccent
@@ -102,6 +106,7 @@ fun WormGptScreen(
     modifier: Modifier = Modifier
 ) {
     val currentMode by viewModel.currentMode.collectAsStateWithLifecycle()
+    val allPersonas by viewModel.allPersonas.collectAsStateWithLifecycle()
     val currentPersona by viewModel.currentPersona.collectAsStateWithLifecycle()
     val inputPrompt by viewModel.inputPrompt.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
@@ -117,6 +122,7 @@ fun WormGptScreen(
     val attachedFile by viewModel.attachedFile.collectAsStateWithLifecycle()
     val isFileProcessing by viewModel.isFileProcessing.collectAsStateWithLifecycle()
     val fileProgressText by viewModel.fileProgressText.collectAsStateWithLifecycle()
+    val replyingToMessage by viewModel.replyingToMessage.collectAsStateWithLifecycle()
 
     // Voice Engine States
     val selectedVoiceProvider by viewModel.selectedVoiceProvider.collectAsStateWithLifecycle()
@@ -186,6 +192,17 @@ fun WormGptScreen(
         }
     }
 
+    val sttLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK && result.data != null) {
+            val matches = result.data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)
+            if (!matches.isNullOrEmpty()) {
+                viewModel.inputPrompt.value = matches[0]
+            }
+        }
+    }
+
     var showModeSheet by remember { mutableStateOf(false) }
     var showPersonaSheet by remember { mutableStateOf(false) }
     var showHistorySheet by remember { mutableStateOf(false) }
@@ -195,9 +212,16 @@ fun WormGptScreen(
 
     // AI Voice Manager Setup
     var ttsEnabled by remember { mutableStateOf(false) }
+    var currentlySpeakingMessageId by remember { mutableStateOf<Long?>(null) }
     val aiVoiceManager = remember(context) { com.example.util.AiVoiceManager(context) }
     val isVoiceSpeaking by aiVoiceManager.isSpeaking.collectAsStateWithLifecycle()
     val isVoiceLoadingAudio by aiVoiceManager.isLoadingAudio.collectAsStateWithLifecycle()
+
+    LaunchedEffect(isVoiceSpeaking) {
+        if (!isVoiceSpeaking) {
+            currentlySpeakingMessageId = null
+        }
+    }
 
     androidx.compose.runtime.DisposableEffect(aiVoiceManager) {
         onDispose {
@@ -273,12 +297,19 @@ fun WormGptScreen(
     Scaffold(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF0D0D0D))
+            .background(Color.White)
             .statusBarsPadding(),
         topBar = {
             HeaderBar(
                 currentMode = currentMode,
                 currentPersona = currentPersona,
+                isLiveAudioMode = ttsEnabled,
+                onToggleLiveAudioMode = {
+                    ttsEnabled = !ttsEnabled
+                    if (!ttsEnabled) {
+                        aiVoiceManager.stop()
+                    }
+                },
                 onOpenModeSelector = { showModeSheet = true },
                 onOpenPersonaSelector = { showPersonaSheet = true },
                 onOpenHistory = { showHistorySheet = true },
@@ -290,10 +321,9 @@ fun WormGptScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xFF18181B).copy(alpha = 0.95f))
-                    .border(width = 0.5.dp, color = Color(0xFF27272A), shape = RoundedCornerShape(0.dp))
+                    .background(Color.White)
                     .windowInsetsPadding(WindowInsets.navigationBars)
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .padding(horizontal = 14.dp, vertical = 8.dp)
             ) {
                 // File reading background progress indicator
                 if (isFileProcessing) {
@@ -302,32 +332,28 @@ fun WormGptScreen(
                             .fillMaxWidth()
                             .padding(bottom = 8.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFF18181B))
-                            .border(1.dp, WormGptRedAccent, RoundedCornerShape(12.dp))
+                            .background(Color(0xFFF4F4F5))
+                            .border(1.dp, Color(0xFF10A37F), RoundedCornerShape(12.dp))
                             .padding(12.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(20.dp),
-                                color = WormGptRedAccent,
+                                color = Color(0xFF10A37F),
                                 strokeWidth = 2.dp
                             )
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
                                 Text(
-                                    text = "READING FILE IN BACKGROUND...",
-                                    color = Color.White,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace
+                                    text = "Membaca Berkas...",
+                                    color = Color(0xFF0F0F0F),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = fileProgressText.ifBlank { "Parsing code structure, AST, and functions..." },
-                                    color = Color(0xFFA1A1AA),
-                                    fontSize = 10.sp,
-                                    fontFamily = FontFamily.Monospace
+                                    text = fileProgressText.ifBlank { "Memproses struktur file..." },
+                                    color = Color(0xFF6E6E80),
+                                    fontSize = 11.sp
                                 )
                             }
                         }
@@ -344,141 +370,81 @@ fun WormGptScreen(
                     )
                 }
 
-                // Chat Persona Selector Chips Row
-                PersonaChipsBar(
-                    currentPersona = currentPersona,
-                    onSelectPersona = { persona ->
-                        viewModel.saveSelectedPersona(persona)
-                    }
-                )
+                // Quote / Reply preview card banner
+                if (replyingToMessage != null) {
+                    QuoteReplyPreviewCard(
+                        quotedMessage = replyingToMessage!!,
+                        onCancel = { viewModel.clearReplyingTo() },
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
 
-                // Quick Presets Row
-                QuickPromptsBar(
-                    onSelectPrompt = { prompt ->
-                        viewModel.setQuickPrompt(prompt)
-                    }
-                )
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                // Input Field Row
+                // Single Floating Pill Input Container (ChatGPT Standard Light Mode)
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(26.dp))
+                        .background(Color(0xFFF4F4F5))
+                        .border(0.5.dp, Color(0xFFE5E5E5), RoundedCornerShape(26.dp))
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(
-                        onClick = { showModeSheet = true },
-                        modifier = Modifier
-                            .size(42.dp)
-                            .background(Color(0xFF27272A), RoundedCornerShape(14.dp))
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Psychology,
-                            contentDescription = "Presets",
-                            tint = WormGptRedAccent,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(6.dp))
-
-                    // Attachment Hub Button
+                    // Left Action Icon 1: Camera
                     IconButton(
                         onClick = {
-                            showAttachmentMenuSheet = true
+                            if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                                launchCameraOrFallback(context, cameraLauncher, viewModel)
+                            } else {
+                                cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+                            }
                         },
-                        modifier = Modifier
-                            .size(42.dp)
-                            .background(
-                                if (attachedFile != null) WormGptRedDark else Color(0xFF27272A),
-                                RoundedCornerShape(14.dp)
-                            )
-                            .border(
-                                width = if (attachedFile != null) 1.dp else 0.dp,
-                                color = WormGptRedAccent,
-                                shape = RoundedCornerShape(14.dp)
-                            )
+                        modifier = Modifier.size(36.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.AttachFile,
-                            contentDescription = "Attach Options",
-                            tint = if (attachedFile != null) WormGptRedAccent else Color(0xFFA1A1AA),
+                            imageVector = Icons.Default.CameraAlt,
+                            contentDescription = "Kamera",
+                            tint = Color(0xFF6E6E80),
                             modifier = Modifier.size(20.dp)
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(6.dp))
-
-                    // TTS Voice Toggle Button
+                    // Left Action Icon 2: Attachment Paperclip
                     IconButton(
-                        onClick = {
-                            ttsEnabled = !ttsEnabled
-                            if (!ttsEnabled) {
-                                aiVoiceManager.stop()
-                                Toast.makeText(context, "Voice AI Dimatikan", Toast.LENGTH_SHORT).show()
-                            } else {
-                                Toast.makeText(context, "Voice AI Diaktifkan ($selectedVoiceProvider: $selectedVoiceName)", Toast.LENGTH_SHORT).show()
-                                speakAiResponse("Suara AI diaktifkan. Mode $selectedVoiceProvider dengan variasi suara $selectedVoiceName.")
-                            }
-                        },
-                        modifier = Modifier
-                            .size(42.dp)
-                            .background(
-                                if (ttsEnabled) WormGptRedDark else Color(0xFF27272A),
-                                RoundedCornerShape(14.dp)
-                            )
-                            .border(
-                                width = if (ttsEnabled) 1.dp else 0.dp,
-                                color = WormGptRedAccent,
-                                shape = RoundedCornerShape(14.dp)
-                            )
+                        onClick = { showAttachmentMenuSheet = true },
+                        modifier = Modifier.size(36.dp)
                     ) {
-                        if (isVoiceLoadingAudio) {
-                            androidx.compose.material3.CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                color = WormGptRedAccent,
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Icon(
-                                imageVector = if (ttsEnabled) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
-                                contentDescription = "Toggle TTS Voice",
-                                tint = if (isVoiceSpeaking) Color(0xFF10B981) else if (ttsEnabled) WormGptRedAccent else Color(0xFFA1A1AA),
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
+                        Icon(
+                            imageVector = Icons.Default.AttachFile,
+                            contentDescription = "Lampirkan File",
+                            tint = if (attachedFile != null) Color(0xFF10A37F) else Color(0xFF6E6E80),
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
 
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
 
-                    // TextField Container
+                    // Floating Center Text Field
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(Color(0xFF27272A).copy(alpha = 0.6f))
-                            .border(
-                                width = 0.5.dp,
-                                color = if (inputPrompt.isNotBlank() || attachedFile != null) WormGptRedAccent.copy(alpha = 0.6f) else Color(0xFF3F3F46),
-                                shape = RoundedCornerShape(16.dp)
-                            )
-                            .padding(horizontal = 14.dp, vertical = 10.dp)
+                            .padding(vertical = 4.dp)
                     ) {
                         BasicTextField(
                             value = inputPrompt,
                             onValueChange = { viewModel.inputPrompt.value = it },
                             textStyle = TextStyle(
-                                color = Color.White,
-                                fontSize = 14.sp,
+                                color = Color(0xFF0F0F0F),
+                                fontSize = 15.sp,
                                 fontFamily = FontFamily.Default
                             ),
-                            cursorBrush = SolidColor(WormGptRedAccent),
+                            cursorBrush = SolidColor(Color(0xFF10A37F)),
+                            maxLines = 5,
                             decorationBox = { innerTextField ->
                                 if (inputPrompt.isEmpty()) {
                                     Text(
-                                        text = if (attachedFile != null) "Add query or prompt for file..." else "Execute query or attach file...",
-                                        color = Color(0xFF71717A),
-                                        fontSize = 13.sp
+                                        text = if (replyingToMessage != null) "Tulis balasan..." else if (attachedFile != null) "Tulis instruksi file..." else "Pesan WormGPT...",
+                                        color = Color(0xFF8E8E93),
+                                        fontSize = 15.sp
                                     )
                                 }
                                 innerTextField()
@@ -488,25 +454,64 @@ fun WormGptScreen(
 
                     Spacer(modifier = Modifier.width(6.dp))
 
-                    // Send Button
-                    val canSend = !isLoading && (inputPrompt.isNotBlank() || attachedFile != null)
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(if (canSend) WormGptRedAccent else Color(0xFF3F3F46))
-                            .clickable(enabled = canSend) {
-                                keyboardController?.hide()
-                                handleSendMessage(null)
+                    // Right Inside Action: Stop / Send / Mic Icon
+                    val canSend = inputPrompt.isNotBlank() || attachedFile != null || replyingToMessage != null
+                    if (isLoading) {
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF0F0F0F))
+                                .clickable { viewModel.stopResponse() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Stop,
+                                contentDescription = "Hentikan Respons",
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    } else if (canSend) {
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF0F0F0F))
+                                .clickable {
+                                    keyboardController?.hide()
+                                    handleSendMessage(null)
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Send,
+                                contentDescription = "Kirim Pesan",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    } else {
+                        IconButton(
+                            onClick = {
+                                val sttIntent = com.example.util.FilePickerHelper.createSpeechToTextIntent()
+                                if (sttIntent != null) {
+                                    try {
+                                        sttLauncher.launch(sttIntent)
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Speech to text tidak didukung di perangkat ini.", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
                             },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.Send,
-                            contentDescription = "Send",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
+                            modifier = Modifier.size(34.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Mic,
+                                contentDescription = "Mikrofon",
+                                tint = Color(0xFF6E6E80),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -516,27 +521,51 @@ fun WormGptScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .background(Color(0xFF0D0D0D))
+                .background(Color.White)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 12.dp)
+                    .padding(horizontal = 16.dp)
             ) {
-                // Messages LazyColumn
+                // Messages LazyColumn (ChatGPT Flow)
                 LazyColumn(
                     state = listState,
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .padding(vertical = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                        .padding(vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     items(activeMessages) { message ->
-                        ChatMessageItem(message = message)
+                        val isLastAiMessage = message == activeMessages.lastOrNull { it.sender != "USER" }
+                        ChatMessageItem(
+                            message = message,
+                            isStreaming = isLoading && isLastAiMessage,
+                            onReplyMessage = { msg ->
+                                viewModel.setReplyingTo(msg)
+                            },
+                            onReadAloud = { text ->
+                                currentlySpeakingMessageId = message.id
+                                aiVoiceManager.speak(
+                                    text = text,
+                                    provider = selectedVoiceProvider,
+                                    voiceName = selectedVoiceName,
+                                    elevenLabsKey = elevenLabsApiKey,
+                                    googleCloudKey = googleTtsApiKey,
+                                    speed = voiceSpeed,
+                                    pitch = voicePitch
+                                )
+                            },
+                            isSpeakingThisMessage = (isVoiceSpeaking && currentlySpeakingMessageId == message.id),
+                            onStopSpeaking = {
+                                aiVoiceManager.stop()
+                                currentlySpeakingMessageId = null
+                            }
+                        )
                     }
 
-                    if (isLoading) {
+                    if (isLoading && activeMessages.none { it.sender != "USER" }) {
                         item {
                             LoadingPulseIndicator(modeTag = currentMode.tag)
                         }
@@ -550,6 +579,7 @@ fun WormGptScreen(
     if (showPersonaSheet) {
         PersonaSelectorSheet(
             currentPersona = currentPersona,
+            allPersonas = allPersonas,
             onSelectPersona = { persona -> viewModel.saveSelectedPersona(persona) },
             onDismiss = { showPersonaSheet = false },
             sheetState = personaSheetState
@@ -590,6 +620,7 @@ fun WormGptScreen(
             selectedModel = selectedModel,
             customModels = customModels,
             currentPersona = currentPersona,
+            allPersonas = allPersonas,
             selectedVoiceProvider = selectedVoiceProvider,
             selectedVoiceName = selectedVoiceName,
             elevenLabsApiKey = elevenLabsApiKey,
@@ -601,10 +632,27 @@ fun WormGptScreen(
             onSaveModel = { model -> viewModel.saveSelectedModel(model) },
             onSaveCustomModels = { models -> viewModel.saveCustomModels(models) },
             onSavePersona = { persona -> viewModel.saveSelectedPersona(persona) },
+            onAddCustomPersona = { name, desc, prompt, emoji ->
+                viewModel.addCustomPersona(name, desc, prompt, emoji)
+            },
+            onDeleteCustomPersona = { id ->
+                viewModel.deleteCustomPersona(id)
+            },
             onSaveVoiceProvider = { provider -> viewModel.saveVoiceProvider(provider) },
             onSaveVoiceName = { name -> viewModel.saveVoiceName(name) },
             onSaveElevenLabsApiKey = { key -> viewModel.saveElevenLabsApiKey(key) },
             onSaveGoogleTtsApiKey = { key -> viewModel.saveGoogleTtsApiKey(key) },
+            onTestVoice = { provider, voiceName, elevenKey, googleKey ->
+                aiVoiceManager.speak(
+                    text = "Halo! Ini adalah pengujian suara AI sistem WormGPT. Fitur suara berfungsi dengan baik.",
+                    provider = provider,
+                    voiceName = voiceName,
+                    elevenLabsKey = elevenKey,
+                    googleCloudKey = googleKey,
+                    speed = voiceSpeed,
+                    pitch = voicePitch
+                )
+            },
             onDismiss = { showSettingsDialog = false }
         )
     }
@@ -775,8 +823,8 @@ private fun LoadingPulseIndicator(modeTag: String) {
         modifier = Modifier
             .padding(vertical = 8.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xFF18181B))
-            .border(0.5.dp, WormGptBorderRed, RoundedCornerShape(12.dp))
+            .background(Color(0xFFF4F4F5))
+            .border(0.5.dp, Color(0xFFE5E5E5), RoundedCornerShape(12.dp))
             .padding(12.dp)
     ) {
         Row(
@@ -786,12 +834,12 @@ private fun LoadingPulseIndicator(modeTag: String) {
             Icon(
                 imageVector = Icons.Default.Terminal,
                 contentDescription = null,
-                tint = WormGptRedAccent,
+                tint = Color(0xFF10A37F),
                 modifier = Modifier.size(16.dp)
             )
             Text(
-                text = "$modeTag ANALYZING SYSTEM PAYLOAD...",
-                color = WormGptRedAccent,
+                text = "$modeTag MEMPROSES BALASAN...",
+                color = Color(0xFF10A37F),
                 fontSize = 11.sp,
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Bold
@@ -801,13 +849,13 @@ private fun LoadingPulseIndicator(modeTag: String) {
                     modifier = Modifier
                         .size(width = 12.dp, height = 4.dp)
                         .alpha(bar1)
-                        .background(WormGptRedAccent, CircleShape)
+                        .background(Color(0xFF10A37F), CircleShape)
                 )
                 Box(
                     modifier = Modifier
                         .size(width = 12.dp, height = 4.dp)
                         .alpha(bar2)
-                        .background(WormGptRedDark, CircleShape)
+                        .background(Color(0xFF0F0F0F), CircleShape)
                 )
             }
         }

@@ -8,9 +8,17 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,20 +30,29 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Reply
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -47,12 +64,6 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.db.ChatMessageEntity
-import com.example.ui.theme.WormGptBorderRed
-import com.example.ui.theme.WormGptCodeBg
-import com.example.ui.theme.WormGptGreenTerminal
-import com.example.ui.theme.WormGptRedAccent
-import com.example.ui.theme.WormGptRedDark
-import com.example.ui.theme.WormGptSurface
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -61,217 +72,262 @@ import java.util.Locale
 @Composable
 fun ChatMessageItem(
     message: ChatMessageEntity,
+    isStreaming: Boolean = false,
+    onReplyMessage: (ChatMessageEntity) -> Unit = {},
+    onReadAloud: ((String) -> Unit)? = null,
+    isSpeakingThisMessage: Boolean = false,
+    onStopSpeaking: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val isUser = message.sender == "USER"
     val timeFormatted = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(message.timestamp))
     val context = LocalContext.current
+    var showContextMenu by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(vertical = 6.dp),
+            .padding(vertical = 10.dp),
         horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
     ) {
         if (isUser) {
-            // User Message
-            Box(
-                modifier = Modifier
-                    .widthIn(max = 300.dp)
-                    .background(
-                        color = Color(0xFF27272A),
-                        shape = RoundedCornerShape(
-                            topStart = 16.dp,
-                            topEnd = 0.dp,
-                            bottomEnd = 16.dp,
-                            bottomStart = 16.dp
+            // User Message - ChatGPT Style Pill Bubble (Light Mode)
+            Column(horizontalAlignment = Alignment.End) {
+                Box(
+                    modifier = Modifier
+                        .widthIn(max = 320.dp)
+                        .clip(
+                            RoundedCornerShape(
+                                topStart = 20.dp,
+                                topEnd = 20.dp,
+                                bottomEnd = 4.dp,
+                                bottomStart = 20.dp
+                            )
                         )
+                        .background(Color(0xFFF4F4F5))
+                        .pointerInput(Unit) {
+                            detectTapGestures(
+                                onLongPress = { showContextMenu = !showContextMenu },
+                                onTap = { showContextMenu = !showContextMenu }
+                            )
+                        }
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                ) {
+                    Text(
+                        text = message.content,
+                        color = Color(0xFF0F0F0F),
+                        fontSize = 15.sp,
+                        lineHeight = 22.sp
                     )
-                    .padding(horizontal = 14.dp, vertical = 10.dp)
-            ) {
-                Text(
-                    text = message.content,
-                    color = Color(0xFFE0E0E0),
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp
-                )
+                }
+
+                // Floating Action Strip on Long-Press / Tap
+                AnimatedVisibility(visible = showContextMenu) {
+                    Row(
+                        modifier = Modifier
+                            .padding(top = 6.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color.White)
+                            .border(0.5.dp, Color(0xFFE5E5E5), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 6.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Reply
+                        Row(
+                            modifier = Modifier
+                                .clickable {
+                                    showContextMenu = false
+                                    onReplyMessage(message)
+                                }
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Reply,
+                                contentDescription = "Balas",
+                                tint = Color(0xFF5D5D6D),
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("BALAS", color = Color(0xFF5D5D6D), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        // Copy
+                        Row(
+                            modifier = Modifier
+                                .clickable {
+                                    showContextMenu = false
+                                    copyToClipboard(context, message.content)
+                                }
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = "Salin",
+                                tint = Color(0xFF5D5D6D),
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("SALIN", color = Color(0xFF5D5D6D), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
             }
-            Text(
-                text = "SENT • $timeFormatted",
-                color = Color(0xFF71717A),
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = 4.dp, end = 2.dp)
-            )
         } else {
-            // WormGPT Message
+            // AI Response - ChatGPT Style Natural Text Stream Flow (Light Mode)
             val isError = message.isError
-            
-            Box(
+
+            Row(
                 modifier = Modifier
-                    .fillMaxWidth(0.92f)
-                    .background(
-                        brush = Brush.verticalGradient(
-                            colors = if (isError) {
-                                listOf(Color(0xFF2D0A0A), Color(0xFF180505))
-                            } else {
-                                listOf(Color(0xFF18181B), Color(0xFF09090B))
-                            }
-                        ),
-                        shape = RoundedCornerShape(
-                            topStart = 0.dp,
-                            topEnd = 20.dp,
-                            bottomEnd = 20.dp,
-                            bottomStart = 20.dp
+                    .fillMaxWidth()
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onLongPress = { showContextMenu = !showContextMenu }
                         )
-                    )
-                    .border(
-                        width = 1.dp,
-                        color = if (isError) Color(0xFFEF4444) else WormGptBorderRed.copy(alpha = 0.6f),
-                        shape = RoundedCornerShape(
-                            topStart = 0.dp,
-                            topEnd = 20.dp,
-                            bottomEnd = 20.dp,
-                            bottomStart = 20.dp
-                        )
-                    )
-                    .padding(14.dp)
+                    },
+                verticalAlignment = Alignment.Top
             ) {
-                Column {
-                    // Header Tag
+                // OpenAI / AI Avatar Icon
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(CircleShape)
+                        .background(if (isError) Color(0xFFDC2626) else Color(0xFF10A37F)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (isError) Icons.Default.Warning else Icons.Default.AutoAwesome,
+                        contentDescription = "WormGPT AI",
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    // Message Header label
+                    Text(
+                        text = if (isError) "System Error" else "WormGPT",
+                        color = Color(0xFF0F0F0F),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+
+                    // Message content rendering with streaming cursor if active
+                    FormattedMessageText(
+                        content = message.content,
+                        isStreaming = isStreaming,
+                        context = context
+                    )
+
+                    // Floating Context Menu Bar (SALIN, BALAS, BACAKAN, UNDUH)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(bottom = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                            .padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = if (isError) Icons.Default.Warning else Icons.Default.Terminal,
-                                contentDescription = null,
-                                tint = if (isError) Color(0xFFEF4444) else WormGptRedAccent,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = if (isError) "[SYS_EXEC_ERROR]" else "[SYS_OVERRIDE_ACTIVE]",
-                                color = if (isError) Color(0xFFEF4444) else WormGptRedAccent,
-                                fontSize = 11.sp,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-
-                        // Actions Row (Copy & Download)
+                        // Copy Button
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable { copyToClipboard(context, message.content) }
+                                .background(Color(0xFFF4F4F5))
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Copy Action
-                            Row(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .clickable {
-                                        copyToClipboard(context, message.content)
-                                    }
-                                    .background(Color(0xFF27272A).copy(alpha = 0.5f))
-                                    .padding(horizontal = 6.dp, vertical = 3.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.ContentCopy,
-                                    contentDescription = "Copy Text",
-                                    tint = Color(0xFFA1A1AA),
-                                    modifier = Modifier.size(11.dp)
-                                )
-                                Spacer(modifier = Modifier.width(3.dp))
-                                Text(
-                                    text = "SALIN",
-                                    color = Color(0xFFA1A1AA),
-                                    fontSize = 9.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = "Salin",
+                                tint = Color(0xFF5D5D6D),
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("SALIN", color = Color(0xFF5D5D6D), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
 
-                            // Download Action
+                        // Reply Button
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable { onReplyMessage(message) }
+                                .background(Color(0xFFF4F4F5))
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Reply,
+                                contentDescription = "Balas",
+                                tint = Color(0xFF5D5D6D),
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("BALAS", color = Color(0xFF5D5D6D), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        // Read Aloud Button
+                        if (!isError) {
                             Row(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(6.dp))
                                     .clickable {
-                                        val ext = detectDocumentExtension(message.content)
-                                        val savedPath = saveTextToDownloads(context, message.content, ext)
-                                        if (savedPath != null) {
-                                            Toast.makeText(context, "✅ File berhasil diunduh ke $savedPath", Toast.LENGTH_LONG).show()
+                                        if (isSpeakingThisMessage) {
+                                            onStopSpeaking?.invoke()
                                         } else {
-                                            Toast.makeText(context, "❌ Gagal mengunduh file.", Toast.LENGTH_SHORT).show()
+                                            onReadAloud?.invoke(message.content)
                                         }
                                     }
-                                    .background(Color(0xFF1E293B))
-                                    .border(0.5.dp, WormGptGreenTerminal.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
-                                    .padding(horizontal = 6.dp, vertical = 3.dp),
+                                    .background(if (isSpeakingThisMessage) Color(0xFFE6F4F1) else Color(0xFFF4F4F5))
+                                    .padding(horizontal = 8.dp, vertical = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Download,
-                                    contentDescription = "Unduh File",
-                                    tint = WormGptGreenTerminal,
-                                    modifier = Modifier.size(11.dp)
+                                    imageVector = if (isSpeakingThisMessage) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                                    contentDescription = "Bacakan",
+                                    tint = if (isSpeakingThisMessage) Color(0xFF10A37F) else Color(0xFF5D5D6D),
+                                    modifier = Modifier.size(12.dp)
                                 )
-                                Spacer(modifier = Modifier.width(3.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "UNDUH FILE",
-                                    color = WormGptGreenTerminal,
-                                    fontSize = 9.sp,
-                                    fontFamily = FontFamily.Monospace,
+                                    text = if (isSpeakingThisMessage) "STOP" else "BACAKAN",
+                                    color = if (isSpeakingThisMessage) Color(0xFF10A37F) else Color(0xFF5D5D6D),
+                                    fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
                         }
-                    }
 
-                    // Content Rendering (Supports Markdown Code Blocks)
-                    FormattedMessageText(content = message.content, context = context)
-
-                    // Indicator Line / Mode Tag Footer
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Box(
-                                modifier = Modifier
-                                    .height(3.dp)
-                                    .width(28.dp)
-                                    .background(
-                                        if (isError) Color(0xFFEF4444) else WormGptRedAccent,
-                                        RoundedCornerShape(2.dp)
-                                    )
+                        // Download Button
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable {
+                                    val ext = detectDocumentExtension(message.content)
+                                    val savedPath = saveTextToDownloads(context, message.content, ext)
+                                    if (savedPath != null) {
+                                        Toast.makeText(context, "✅ Disimpan ke $savedPath", Toast.LENGTH_LONG).show()
+                                    } else {
+                                        Toast.makeText(context, "❌ Gagal mengunduh file.", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                                .background(Color(0xFFE6F4F1))
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Download,
+                                contentDescription = "Unduh",
+                                tint = Color(0xFF10A37F),
+                                modifier = Modifier.size(12.dp)
                             )
-                            Box(
-                                modifier = Modifier
-                                    .height(3.dp)
-                                    .width(8.dp)
-                                    .background(WormGptRedDark, RoundedCornerShape(2.dp))
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .height(3.dp)
-                                    .width(8.dp)
-                                    .background(WormGptRedDark, RoundedCornerShape(2.dp))
-                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("UNDUH", color = Color(0xFF10A37F), fontSize = 10.sp, fontWeight = FontWeight.Bold)
                         }
-
-                        Text(
-                            text = message.modeTag + " • " + timeFormatted,
-                            color = WormGptBorderRed,
-                            fontSize = 9.sp,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold
-                        )
                     }
                 }
             }
@@ -282,9 +338,9 @@ fun ChatMessageItem(
 @Composable
 private fun FormattedMessageText(
     content: String,
+    isStreaming: Boolean = false,
     context: Context
 ) {
-    // Split content by ``` code blocks
     val parts = content.split("```")
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -320,10 +376,10 @@ private fun FormattedMessageText(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(WormGptCodeBg)
-                        .border(0.5.dp, Color(0xFF27272A), RoundedCornerShape(8.dp))
-                        .padding(8.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF1E1E1E))
+                        .border(0.5.dp, Color(0xFFE5E5E5), RoundedCornerShape(10.dp))
+                        .padding(12.dp)
                 ) {
                     Column {
                         Row(
@@ -334,9 +390,9 @@ private fun FormattedMessageText(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "[$langTag]",
-                                color = WormGptGreenTerminal,
-                                fontSize = 10.sp,
+                                text = langTag,
+                                color = Color(0xFFD4D4D8),
+                                fontSize = 11.sp,
                                 fontFamily = FontFamily.Monospace,
                                 fontWeight = FontWeight.Bold
                             )
@@ -345,26 +401,24 @@ private fun FormattedMessageText(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                // Copy Code Block Button
+                                // Copy Code
                                 Text(
-                                    text = "SALIN",
-                                    color = Color(0xFFA1A1AA),
-                                    fontSize = 9.sp,
-                                    fontFamily = FontFamily.Monospace,
+                                    text = "Salin",
+                                    color = Color(0xFFE4E4E7),
+                                    fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(4.dp))
-                                        .background(Color(0xFF27272A))
+                                        .background(Color(0xFF2D2D2D))
                                         .clickable { copyToClipboard(context, codeText) }
                                         .padding(horizontal = 6.dp, vertical = 3.dp)
                                 )
 
-                                // Download Code Block File Button
+                                // Download Code File
                                 Row(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(4.dp))
-                                        .background(Color(0xFF064E3B))
-                                        .border(0.5.dp, WormGptGreenTerminal.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                                        .background(Color(0xFF10A37F).copy(alpha = 0.25f))
                                         .clickable {
                                             val savedPath = saveTextToDownloads(context, codeText, ext)
                                             if (savedPath != null) {
@@ -379,15 +433,14 @@ private fun FormattedMessageText(
                                     Icon(
                                         imageVector = Icons.Default.Download,
                                         contentDescription = "Unduh Kode",
-                                        tint = WormGptGreenTerminal,
+                                        tint = Color(0xFF10A37F),
                                         modifier = Modifier.size(10.dp)
                                     )
                                     Spacer(modifier = Modifier.width(3.dp))
                                     Text(
-                                        text = "UNDUH (.${ext.uppercase()})",
-                                        color = WormGptGreenTerminal,
-                                        fontSize = 9.sp,
-                                        fontFamily = FontFamily.Monospace,
+                                        text = "Unduh .$ext",
+                                        color = Color(0xFF10A37F),
+                                        fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
@@ -396,17 +449,20 @@ private fun FormattedMessageText(
 
                         Text(
                             text = codeText,
-                            color = Color(0xFF34D399),
-                            fontSize = 12.sp,
+                            color = Color(0xFFF4F4F5),
+                            fontSize = 13.sp,
                             fontFamily = FontFamily.Monospace,
-                            lineHeight = 16.sp
+                            lineHeight = 18.sp
                         )
                     }
                 }
             } else {
-                // Regular markdown text with structured headers, bullet points, quotes, and inline code formatting
-                if (part.trim().isNotEmpty()) {
-                    FormattedMarkdownParagraph(text = part)
+                // Regular Markdown Text with Blinking Cursor if Streaming
+                if (part.trim().isNotEmpty() || (isStreaming && index == parts.lastIndex)) {
+                    FormattedMarkdownParagraph(
+                        text = part,
+                        showCursor = isStreaming && index == parts.lastIndex
+                    )
                 }
             }
         }
@@ -414,16 +470,31 @@ private fun FormattedMessageText(
 }
 
 @Composable
-private fun FormattedMarkdownParagraph(text: String) {
+private fun FormattedMarkdownParagraph(
+    text: String,
+    showCursor: Boolean = false
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "cursor")
+    val alphaAnim by infiniteTransition.animateFloat(
+        initialValue = 0.1f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "cursorAlpha"
+    )
+
     val lines = text.trim().lines()
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        lines.forEach { line ->
+        lines.forEachIndexed { lineIdx, line ->
+            val isLastLine = lineIdx == lines.lastIndex
             val trimmedLine = line.trim()
             when {
                 trimmedLine.startsWith("# ") -> {
                     Text(
                         text = parseInlineMarkdown(trimmedLine.removePrefix("# ").trim()),
-                        color = Color.White,
+                        color = Color(0xFF0F0F0F),
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         lineHeight = 24.sp,
@@ -433,7 +504,7 @@ private fun FormattedMarkdownParagraph(text: String) {
                 trimmedLine.startsWith("## ") -> {
                     Text(
                         text = parseInlineMarkdown(trimmedLine.removePrefix("## ").trim()),
-                        color = WormGptGreenTerminal,
+                        color = Color(0xFF10A37F),
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         lineHeight = 22.sp,
@@ -443,7 +514,7 @@ private fun FormattedMarkdownParagraph(text: String) {
                 trimmedLine.startsWith("### ") -> {
                     Text(
                         text = parseInlineMarkdown(trimmedLine.removePrefix("### ").trim()),
-                        color = Color.White,
+                        color = Color(0xFF0F0F0F),
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         lineHeight = 20.sp,
@@ -460,15 +531,15 @@ private fun FormattedMarkdownParagraph(text: String) {
                     ) {
                         Text(
                             text = "• ",
-                            color = WormGptGreenTerminal,
+                            color = Color(0xFF10A37F),
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
                             text = parseInlineMarkdown(bulletText),
-                            color = Color(0xFFE4E4E7),
-                            fontSize = 13.sp,
-                            lineHeight = 19.sp
+                            color = Color(0xFF0F0F0F),
+                            fontSize = 14.sp,
+                            lineHeight = 21.sp
                         )
                     }
                 }
@@ -483,48 +554,45 @@ private fun FormattedMarkdownParagraph(text: String) {
                     ) {
                         Text(
                             text = "$numPrefix ",
-                            color = WormGptRedAccent,
-                            fontSize = 13.sp,
-                            fontFamily = FontFamily.Monospace,
+                            color = Color(0xFF10A37F),
+                            fontSize = 14.sp,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
                             text = parseInlineMarkdown(body),
-                            color = Color(0xFFE4E4E7),
-                            fontSize = 13.sp,
-                            lineHeight = 19.sp
-                        )
-                    }
-                }
-                trimmedLine.startsWith("> ") -> {
-                    val quoteText = trimmedLine.removePrefix("> ").trim()
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 2.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(Color(0xFF18181B))
-                            .border(0.5.dp, WormGptRedAccent, RoundedCornerShape(4.dp))
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            text = parseInlineMarkdown(quoteText),
-                            color = Color(0xFFA1A1AA),
-                            fontSize = 12.sp,
-                            fontStyle = FontStyle.Italic,
-                            lineHeight = 18.sp
+                            color = Color(0xFF0F0F0F),
+                            fontSize = 14.sp,
+                            lineHeight = 21.sp
                         )
                     }
                 }
                 trimmedLine.isNotBlank() -> {
-                    Text(
-                        text = parseInlineMarkdown(trimmedLine),
-                        color = Color(0xFFE4E4E7),
-                        fontSize = 13.sp,
-                        lineHeight = 20.sp
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = parseInlineMarkdown(trimmedLine),
+                            color = Color(0xFF0F0F0F),
+                            fontSize = 14.sp,
+                            lineHeight = 21.sp
+                        )
+                        if (showCursor && isLastLine) {
+                            Text(
+                                text = " ▌",
+                                color = Color(0xFF10A37F),
+                                fontSize = 14.sp,
+                                modifier = Modifier.alpha(alphaAnim)
+                            )
+                        }
+                    }
                 }
             }
+        }
+        if (showCursor && lines.isEmpty()) {
+            Text(
+                text = "▌",
+                color = Color(0xFF10A37F),
+                fontSize = 14.sp,
+                modifier = Modifier.alpha(alphaAnim)
+            )
         }
     }
 }
@@ -560,9 +628,9 @@ private fun parseInlineMarkdown(text: String): AnnotatedString {
                         withStyle(
                             SpanStyle(
                                 fontFamily = FontFamily.Monospace,
-                                background = Color(0xFF27272A),
-                                color = WormGptGreenTerminal,
-                                fontSize = 12.sp
+                                background = Color(0xFFF0F0F2),
+                                color = Color(0xFF10A37F),
+                                fontSize = 13.sp
                             )
                         ) {
                             append(" $codeVal ")
@@ -580,7 +648,7 @@ private fun parseInlineMarkdown(text: String): AnnotatedString {
                         withStyle(
                             SpanStyle(
                                 fontWeight = FontWeight.Bold,
-                                color = Color.White
+                                color = Color(0xFF0F0F0F)
                             )
                         ) {
                             append(boldVal)
@@ -598,7 +666,7 @@ private fun parseInlineMarkdown(text: String): AnnotatedString {
                         withStyle(
                             SpanStyle(
                                 fontStyle = FontStyle.Italic,
-                                color = Color(0xFFD4D4D8)
+                                color = Color(0xFF5D5D6D)
                             )
                         ) {
                             append(italicVal)
@@ -619,9 +687,9 @@ private fun parseInlineMarkdown(text: String): AnnotatedString {
 
 private fun copyToClipboard(context: Context, text: String) {
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    val clip = ClipData.newPlainText("WormGPT Code", text)
+    val clip = ClipData.newPlainText("WormGPT Message", text)
     clipboard.setPrimaryClip(clip)
-    Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
+    Toast.makeText(context, "Teks berhasil disalin", Toast.LENGTH_SHORT).show()
 }
 
 private fun saveTextToDownloads(context: Context, textContent: String, defaultExtension: String = "txt"): String? {

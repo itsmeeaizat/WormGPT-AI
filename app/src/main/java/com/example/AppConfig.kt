@@ -18,13 +18,14 @@ object DEFAULT_CONFIG {
     // ------------------------------------------------------------------------
     // 1. MODEL BAWAAN DEFAULT
     // Contoh Pilihan Model:
+    // - "gemini-3.5-flash-lite" (Default)
+    // - "gemini-3.6-flash"
     // - "gemini-3.5-flash"
-    // - "gemini-1.5-pro"
-    // - "groq/llama-3.3-70b-versatile"
-    // - "openrouter/anthropic/claude-3.5-sonnet"
-    // - "mistral/mistral-large-latest"
+    // - "gemini-3.1-pro-preview"
+    // - "gemini-2.5-pro"
+    // - "gemini-2.5-flash"
     // ------------------------------------------------------------------------
-    var DEFAULT_MODEL: String = "gemini-3.5-flash"
+    var DEFAULT_MODEL: String = "gemini-3.5-flash-lite"
 
     // ------------------------------------------------------------------------
     // 2. API KEY BAWAAN DEFAULT (UTAMA)

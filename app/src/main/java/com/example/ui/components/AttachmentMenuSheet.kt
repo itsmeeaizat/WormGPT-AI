@@ -110,8 +110,8 @@ fun AttachmentMenuSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = Color(0xFF18181B),
-        scrimColor = Color.Black.copy(alpha = 0.7f)
+        containerColor = Color.White,
+        scrimColor = Color.Black.copy(alpha = 0.4f)
     ) {
         Column(
             modifier = Modifier
@@ -125,20 +125,20 @@ fun AttachmentMenuSheet(
                 Icon(
                     imageVector = Icons.Default.Terminal,
                     contentDescription = null,
-                    tint = WormGptRedAccent,
+                    tint = Color(0xFF10A37F),
                     modifier = Modifier.size(22.dp)
                 )
                 Spacer(modifier = Modifier.width(10.dp))
                 Column {
                     Text(
-                        text = "WormGPT Attachment Hub",
-                        color = Color.White,
+                        text = "Lampirkan Media & Berkas",
+                        color = Color(0xFF0F0F0F),
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Attach payloads, files, media, or telemetry to active prompt",
-                        color = Color(0xFFA1A1AA),
+                        text = "Lampirkan file, foto, atau lokasi untuk dianalisis oleh AI",
+                        color = Color(0xFF6E6E80),
                         fontSize = 12.sp
                     )
                 }
@@ -155,10 +155,10 @@ fun AttachmentMenuSheet(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(14.dp))
-                            .background(Color(0xFF09090B))
+                            .background(Color(0xFFF4F4F5))
                             .border(
                                 width = 0.5.dp,
-                                color = WormGptBorderRed.copy(alpha = 0.4f),
+                                color = Color(0xFFE5E5E5),
                                 shape = RoundedCornerShape(14.dp)
                             )
                             .clickable { item.onClick() }
@@ -171,13 +171,13 @@ fun AttachmentMenuSheet(
                             Box(
                                 modifier = Modifier
                                     .size(40.dp)
-                                    .background(Color(0xFF27272A), RoundedCornerShape(10.dp)),
+                                    .background(Color(0xFFE6F4F1), RoundedCornerShape(10.dp)),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = item.icon,
                                     contentDescription = null,
-                                    tint = WormGptRedAccent,
+                                    tint = Color(0xFF10A37F),
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
@@ -185,13 +185,13 @@ fun AttachmentMenuSheet(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = item.title,
-                                    color = Color.White,
+                                    color = Color(0xFF0F0F0F),
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
                                     text = item.subtitle,
-                                    color = Color(0xFFA1A1AA),
+                                    color = Color(0xFF6E6E80),
                                     fontSize = 11.sp,
                                     lineHeight = 15.sp
                                 )

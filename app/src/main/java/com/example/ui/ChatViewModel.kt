@@ -23,16 +23,26 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+
+import com.example.data.api.FileWebSocketClient
+import com.example.data.api.FileWsEvent
+import com.example.data.repository.FileUploadRepository
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: ChatRepository
+    private val fileUploadRepository: FileUploadRepository = FileUploadRepository(application)
+    private val fileWsClient: FileWebSocketClient = FileWebSocketClient()
+    val clientId = "client_${System.currentTimeMillis()}"
+    private var generateJob: Job? = null
     
     private val sharedPreferences = application.getSharedPreferences("wormgpt_config", Context.MODE_PRIVATE)
 
     val currentMode = MutableStateFlow(WormMode.ALL_MODES[0])
-    val currentPersona = MutableStateFlow(ChatPersona.ALL_PERSONAS[0])
+    val allPersonas = MutableStateFlow<List<ChatPersona>>(ChatPersona.DEFAULT_PERSONAS)
+    val currentPersona = MutableStateFlow(ChatPersona.DEFAULT_PERSONAS[0])
     val inputPrompt = MutableStateFlow("")
     val attachedFile = MutableStateFlow<AttachedFile?>(null)
     val isFileProcessing = MutableStateFlow(false)
@@ -42,7 +52,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val groqApiKey = MutableStateFlow("")
     val openRouterApiKey = MutableStateFlow("")
     val mistralApiKey = MutableStateFlow("")
-    val selectedModel = MutableStateFlow("gemini-3.5-flash")
+    val selectedModel = MutableStateFlow(DEFAULT_CONFIG.DEFAULT_MODEL)
     val customModels = MutableStateFlow<List<com.example.data.model.CustomAiModel>>(emptyList())
     val latestAiResponse = MutableStateFlow<String?>(null)
 
@@ -53,6 +63,25 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val googleTtsApiKey = MutableStateFlow("")
     val voiceSpeed = MutableStateFlow(1.0f)
     val voicePitch = MutableStateFlow(1.0f)
+
+    // Reply / Quote Message State
+    val replyingToMessage = MutableStateFlow<ChatMessageEntity?>(null)
+
+    fun setReplyingTo(message: ChatMessageEntity?) {
+        replyingToMessage.value = message
+    }
+
+    fun clearReplyingTo() {
+        replyingToMessage.value = null
+    }
+
+    fun stopResponse() {
+        generateJob?.cancel()
+        generateJob = null
+        fileWsClient.disconnect()
+        isLoading.value = false
+        fileProgressText.value = ""
+    }
 
     fun saveVoiceProvider(provider: String) {
         selectedVoiceProvider.value = provider
@@ -87,6 +116,60 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun saveSelectedPersona(persona: ChatPersona) {
         currentPersona.value = persona
         sharedPreferences.edit().putString("selected_persona_id", persona.id).apply()
+    }
+
+    fun addCustomPersona(name: String, description: String, promptInstruction: String, sampleEmoji: String) {
+        val cleanName = name.trim()
+        val cleanPrompt = promptInstruction.trim()
+        if (cleanName.isBlank() || cleanPrompt.isBlank()) return
+        
+        val cleanTag = cleanName.uppercase().replace(" ", "_").filter { it.isLetterOrDigit() || it == '_' }.take(12)
+        val newId = "custom_${System.currentTimeMillis()}"
+        val newPersona = ChatPersona(
+            id = newId,
+            name = cleanName,
+            tag = if (cleanTag.isNotBlank()) cleanTag else "CUSTOM",
+            description = if (description.isNotBlank()) description.trim() else "Persona kustom buatan pengguna.",
+            sampleEmoji = if (sampleEmoji.isNotBlank()) sampleEmoji.trim() else "✨",
+            systemPromptInstruction = cleanPrompt,
+            isCustom = true
+        )
+
+        val currentCustoms = allPersonas.value.filter { it.isCustom }.toMutableList()
+        currentCustoms.add(newPersona)
+        saveCustomPersonasToSp(currentCustoms)
+
+        val updatedAll = ChatPersona.DEFAULT_PERSONAS + currentCustoms
+        allPersonas.value = updatedAll
+        saveSelectedPersona(newPersona)
+    }
+
+    fun deleteCustomPersona(personaId: String) {
+        val currentCustoms = allPersonas.value.filter { it.isCustom && it.id != personaId }
+        saveCustomPersonasToSp(currentCustoms)
+        val updatedAll = ChatPersona.DEFAULT_PERSONAS + currentCustoms
+        allPersonas.value = updatedAll
+        if (currentPersona.value.id == personaId) {
+            saveSelectedPersona(updatedAll.firstOrNull() ?: ChatPersona.DEFAULT_PERSONAS[0])
+        }
+    }
+
+    private fun saveCustomPersonasToSp(customList: List<ChatPersona>) {
+        try {
+            val jsonArray = org.json.JSONArray()
+            for (p in customList) {
+                val obj = org.json.JSONObject().apply {
+                    put("id", p.id)
+                    put("name", p.name)
+                    put("tag", p.tag)
+                    put("description", p.description)
+                    put("sampleEmoji", p.sampleEmoji)
+                    put("systemPromptInstruction", p.systemPromptInstruction)
+                }
+                jsonArray.put(obj)
+            }
+            sharedPreferences.edit().putString("custom_personas_json", jsonArray.toString()).apply()
+        } catch (_: Exception) {}
     }
 
     fun saveCustomApiKey(key: String) {
@@ -172,8 +255,32 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         voiceSpeed.value = sharedPreferences.getFloat("voice_speed", 1.0f)
         voicePitch.value = sharedPreferences.getFloat("voice_pitch", 1.0f)
 
+        // Load Custom Personas
+        val personasJson = sharedPreferences.getString("custom_personas_json", "[]") ?: "[]"
+        val loadedPersonas = mutableListOf<ChatPersona>()
+        try {
+            val jsonArray = org.json.JSONArray(personasJson)
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                loadedPersonas.add(
+                    ChatPersona(
+                        id = obj.optString("id"),
+                        name = obj.optString("name"),
+                        tag = obj.optString("tag", "CUSTOM"),
+                        description = obj.optString("description"),
+                        sampleEmoji = obj.optString("sampleEmoji", "✨"),
+                        systemPromptInstruction = obj.optString("systemPromptInstruction"),
+                        isCustom = true
+                    )
+                )
+            }
+        } catch (_: Exception) {}
+
+        val combinedPersonas = ChatPersona.DEFAULT_PERSONAS + loadedPersonas
+        allPersonas.value = combinedPersonas
+
         val savedPersonaId = sharedPreferences.getString("selected_persona_id", "gen_z") ?: "gen_z"
-        currentPersona.value = ChatPersona.getById(savedPersonaId)
+        currentPersona.value = ChatPersona.getById(savedPersonaId, combinedPersonas)
         
         val modelsJson = sharedPreferences.getString("custom_models_json", "[]") ?: "[]"
         val loadedList = mutableListOf<com.example.data.model.CustomAiModel>()
@@ -234,11 +341,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val newId = repository.createNewSession(currentMode.value)
         activeSessionId.value = newId
         
-        // Add initial system message welcome
+        // Add initial welcome message
         repository.saveMessage(
             sessionId = newId,
             sender = "WORM_GPT",
-            content = "WormGPT V3.0 Hardened Shell initialized.\nMode: ${currentMode.value.name} (${currentMode.value.tag})",
+            content = "Halo! Ada yang bisa saya bantu hari ini?",
             modeTag = currentMode.value.tag
         )
         
@@ -307,14 +414,21 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun sendMessage(overridePrompt: String? = null, onChunkReceived: ((String) -> Unit)? = null) {
         val rawUserPrompt = (overridePrompt ?: inputPrompt.value).trim()
         val currentAttached = attachedFile.value
+        val quotedMessage = replyingToMessage.value
         
-        if ((rawUserPrompt.isBlank() && currentAttached == null) || isLoading.value) return
+        if ((rawUserPrompt.isBlank() && currentAttached == null && quotedMessage == null) || isLoading.value) return
 
         val sessionId = activeSessionId.value ?: return
 
+        // Optimistic UI: Tampilkan pesan user beserta konteks kutipan & status file secara instan
         val fullTextToSend = buildString {
+            if (quotedMessage != null) {
+                val snippet = quotedMessage.content.take(150).replace("\n", " ")
+                appendLine("[Mengutip pesan sebelumnya: \"$snippet\"]")
+                appendLine()
+            }
             if (currentAttached != null) {
-                appendLine("📎 [ATTACHMENT: ${currentAttached.name} (${currentAttached.formattedSize}) | Type: ${currentAttached.mimeType}]")
+                appendLine("📎 [FILE UPLOAD: ${currentAttached.name} (${currentAttached.formattedSize})] - Memproses...")
                 appendLine("```${currentAttached.extension.ifBlank { "txt" }}")
                 appendLine(currentAttached.contentPayload)
                 appendLine("```")
@@ -322,64 +436,138 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
             if (rawUserPrompt.isNotBlank()) {
                 append(rawUserPrompt)
-            } else {
-                append("Please inspect and analyze this attached file for vulnerabilities, structural audit, or code enhancements.")
+            } else if (currentAttached != null) {
+                append("Tolong analisa file ${currentAttached.name} dan berikan ringkasan serta poin-poin penting.")
+            } else if (quotedMessage != null) {
+                append("Tolong jelaskan lebih lanjut mengenai pesan yang saya kutip di atas.")
             }
         }
 
         inputPrompt.value = ""
         attachedFile.value = null
+        replyingToMessage.value = null
         isLoading.value = true
 
-        viewModelScope.launch {
-            // Save user message
-            repository.saveMessage(
-                sessionId = sessionId,
-                sender = "USER",
-                content = fullTextToSend,
-                modeTag = currentMode.value.tag
-            )
-
-            val currentHistory = activeMessages.value.filter { !it.isError }
-
-            val result = repository.sendToAiModel(
-                userPrompt = fullTextToSend,
-                conversationHistory = currentHistory,
-                mode = currentMode.value,
-                geminiApiKey = customApiKey.value,
-                groqApiKey = groqApiKey.value,
-                openRouterApiKey = openRouterApiKey.value,
-                mistralApiKey = mistralApiKey.value,
-                selectedModel = selectedModel.value,
-                customModels = customModels.value,
-                attachedFile = currentAttached,
-                persona = currentPersona.value,
-                onChunkStream = { chunk ->
-                    onChunkReceived?.invoke(chunk)
-                }
-            )
-
-            result.onSuccess { replyText ->
+        generateJob?.cancel()
+        generateJob = viewModelScope.launch {
+            try {
+                // 1. Simpan pesan User secara instan ke database (Optimistic UI)
                 repository.saveMessage(
                     sessionId = sessionId,
-                    sender = "WORM_GPT",
-                    content = replyText,
+                    sender = "USER",
+                    content = fullTextToSend,
                     modeTag = currentMode.value.tag
                 )
-                latestAiResponse.value = replyText
-            }.onFailure { err ->
-                repository.saveMessage(
-                    sessionId = sessionId,
-                    sender = "WORM_GPT",
-                    content = "[SYS_ERROR] ${err.message ?: "Failed to generate AI output."}",
-                    modeTag = currentMode.value.tag,
-                    isError = true
-                )
-            }
 
-            isLoading.value = false
+                val currentHistory = activeMessages.value.filter { !it.isError }
+
+                // 2. Hubungkan WebSocket real-time client jika ada pemrosesan file
+                if (currentAttached != null) {
+                    fileWsClient.eventListener = { event ->
+                        when (event) {
+                            is FileWsEvent.FileQueued -> {
+                                fileProgressText.value = event.message
+                            }
+                            is FileWsEvent.FileProcessing -> {
+                                fileProgressText.value = event.message
+                            }
+                            is FileWsEvent.FileParsed -> {
+                                fileProgressText.value = event.message
+                            }
+                            is FileWsEvent.AiStreamChunk -> {
+                                onChunkReceived?.invoke(event.chunk)
+                            }
+                            is FileWsEvent.AiStreamComplete -> {
+                                fileProgressText.value = ""
+                            }
+                            is FileWsEvent.FileError -> {
+                                fileProgressText.value = event.errorMessage
+                            }
+                            else -> {}
+                        }
+                    }
+                    fileWsClient.connect(clientId)
+                }
+
+                // 3. Kirim pesan ke Model AI / Upload Repository
+                val result = if (currentAttached != null) {
+                    // Coba upload ke backend / Queue dulu
+                    val uploadRes = fileUploadRepository.uploadFileToBackend(
+                        file = currentAttached,
+                        clientId = clientId,
+                        prompt = rawUserPrompt
+                    )
+                    if (uploadRes.isSuccess) {
+                        // Berhasil dikirim ke queue backend
+                        Result.success("File ${currentAttached.name} berhasil diunggah ke antrean server dan sedang diproses secara streaming real-time.")
+                    } else {
+                        // Direct Gemini Streaming Fallback
+                        repository.sendToAiModel(
+                            userPrompt = fullTextToSend,
+                            conversationHistory = currentHistory,
+                            mode = currentMode.value,
+                            geminiApiKey = customApiKey.value,
+                            groqApiKey = groqApiKey.value,
+                            openRouterApiKey = openRouterApiKey.value,
+                            mistralApiKey = mistralApiKey.value,
+                            selectedModel = selectedModel.value,
+                            customModels = customModels.value,
+                            attachedFile = currentAttached,
+                            persona = currentPersona.value,
+                            onChunkStream = { chunk ->
+                                onChunkReceived?.invoke(chunk)
+                            }
+                        )
+                    }
+                } else {
+                    // Normal chat message AI stream
+                    repository.sendToAiModel(
+                        userPrompt = fullTextToSend,
+                        conversationHistory = currentHistory,
+                        mode = currentMode.value,
+                        geminiApiKey = customApiKey.value,
+                        groqApiKey = groqApiKey.value,
+                        openRouterApiKey = openRouterApiKey.value,
+                        mistralApiKey = mistralApiKey.value,
+                        selectedModel = selectedModel.value,
+                        customModels = customModels.value,
+                        attachedFile = null,
+                        persona = currentPersona.value,
+                        onChunkStream = { chunk ->
+                            onChunkReceived?.invoke(chunk)
+                        }
+                    )
+                }
+
+                result.onSuccess { replyText ->
+                    repository.saveMessage(
+                        sessionId = sessionId,
+                        sender = "WORM_GPT",
+                        content = replyText,
+                        modeTag = currentMode.value.tag
+                    )
+                    latestAiResponse.value = replyText
+                }.onFailure { err ->
+                    if (err !is kotlinx.coroutines.CancellationException) {
+                        repository.saveMessage(
+                            sessionId = sessionId,
+                            sender = "WORM_GPT",
+                            content = "[SYS_ERROR] ${err.message ?: "Gagal memproses keluaran AI."}",
+                            modeTag = currentMode.value.tag,
+                            isError = true
+                        )
+                    }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                android.util.Log.d("ChatViewModel", "Generation cancelled by user")
+            } finally {
+                isLoading.value = false
+                fileProgressText.value = ""
+                generateJob = null
+            }
         }
     }
+
 
     fun setQuickPrompt(promptText: String) {
         inputPrompt.value = promptText

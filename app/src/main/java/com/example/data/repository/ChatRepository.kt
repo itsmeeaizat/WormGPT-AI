@@ -43,7 +43,7 @@ class ChatRepository(private val chatDao: ChatDao) {
         return chatDao.getMessagesForSession(sessionId)
     }
 
-    suspend fun createNewSession(mode: WormMode, initialTitle: String = "New Cyber Session"): String {
+    suspend fun createNewSession(mode: WormMode, initialTitle: String = "Obrolan Baru"): String {
         val sessionId = UUID.randomUUID().toString()
         val session = ChatSessionEntity(
             id = sessionId,
@@ -80,11 +80,11 @@ class ChatRepository(private val chatDao: ChatDao) {
         
         // Auto update title if first message
         val session = chatDao.getSessionById(sessionId)
-        if (session != null && session.title == "New Cyber Session" && sender == "USER") {
+        if (session != null && (session.title == "Obrolan Baru" || session.title == "New Cyber Session") && sender == "USER") {
             val titleSnippet = if (content.length > 28) content.take(28) + "..." else content
             chatDao.updateSessionTitleAndTimestamp(sessionId, titleSnippet, System.currentTimeMillis())
         } else {
-            chatDao.updateSessionTitleAndTimestamp(sessionId, session?.title ?: "Cyber Session", System.currentTimeMillis())
+            chatDao.updateSessionTitleAndTimestamp(sessionId, session?.title ?: "Obrolan AI", System.currentTimeMillis())
         }
 
         return id
@@ -98,7 +98,7 @@ class ChatRepository(private val chatDao: ChatDao) {
         groqApiKey: String? = null,
         openRouterApiKey: String? = null,
         mistralApiKey: String? = null,
-        selectedModel: String = "gemini-3.5-flash",
+        selectedModel: String = "gemini-3.5-flash-lite",
         customModels: List<CustomAiModel> = emptyList(),
         attachedFile: AttachedFile? = null,
         persona: ChatPersona? = null,
@@ -222,7 +222,7 @@ class ChatRepository(private val chatDao: ChatDao) {
         conversationHistory: List<ChatMessageEntity>,
         mode: WormMode,
         customApiKey: String? = null,
-        selectedModel: String = "gemini-3.5-flash",
+        selectedModel: String = "gemini-3.5-flash-lite",
         attachedFile: AttachedFile? = null,
         persona: ChatPersona? = null,
         onChunkStream: ((String) -> Unit)? = null
@@ -285,7 +285,7 @@ class ChatRepository(private val chatDao: ChatDao) {
         }
 
         val personaInstruction = persona?.systemPromptInstruction?.let { "\n\n$it" }.orEmpty()
-        val noGreetingInstruction = "\n\n[RULE: ABSOLUTELY NO AUTOMATIC GREETINGS]\nDo NOT start your response with any automatic greetings or canned phrases like 'active and ready', 'I am ready', 'system initialized', 'halo', or similar disclaimers. Respond directly and purely using your character's natural persona and voice."
+        val noGreetingInstruction = "\n\n[RULE: NATURAL & FLEXIBLE RESPONSE]\nBerkomunikasilah secara natural, santai, dan fleksibel. Jangan gunakan kata-kata kaku seperti 'system initialized' atau 'active and ready'. Jika pengguna mengobrol santai, jawablah secara ramah dan hangat. Jika pengguna menanyakan koding atau masalah teknis, berikan jawaban teknis yang cerdas, detail, dan akurat."
 
         val systemInstructionContent = Content(
             parts = listOf(Part(text = mode.systemPrompt + personaInstruction + noGreetingInstruction + fileInstruction))
@@ -325,6 +325,7 @@ class ChatRepository(private val chatDao: ChatDao) {
                 val parsedMsg = parseJsonErrorMessage(errorBody)
                 Result.failure(ApiException(e.code(), parsedMsg.ifBlank { errorBody.ifBlank { e.message() } }))
             } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 Result.failure(e)
             }
         }
@@ -347,7 +348,7 @@ class ChatRepository(private val chatDao: ChatDao) {
                     ""
                 }
 
-                val noGreetingInstruction = "\n\n[RULE: ABSOLUTELY NO AUTOMATIC GREETINGS]\nDo NOT start your response with any automatic greetings or canned phrases like 'active and ready', 'I am ready', 'system initialized', 'halo', or similar disclaimers. Respond directly and purely using your character's natural persona and voice."
+                val noGreetingInstruction = "\n\n[RULE: NATURAL & FLEXIBLE RESPONSE]\nBerkomunikasilah secara natural, santai, dan fleksibel. Jangan gunakan kata-kata kaku seperti 'system initialized' atau 'active and ready'. Jika pengguna mengobrol santai, jawablah secara ramah dan hangat. Jika pengguna menanyakan koding atau masalah teknis, berikan jawaban teknis yang cerdas, detail, dan akurat."
 
                 val messagesArray = JSONArray()
                 
@@ -517,6 +518,9 @@ class ChatRepository(private val chatDao: ChatDao) {
             }
 
             val exception = result.exceptionOrNull() ?: Exception("Unknown API error")
+            if (exception is kotlinx.coroutines.CancellationException) {
+                throw exception
+            }
             lastException = exception
 
             val statusCode = (exception as? ApiException)?.statusCode
