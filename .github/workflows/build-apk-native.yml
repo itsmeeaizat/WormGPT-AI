@@ -31,9 +31,9 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Generate Gradle Wrapper (Version 9.3.1)
+      - name: Generate Gradle Wrapper (Version 8.7)
         run: |
-          gradle wrapper --gradle-version 9.3.1
+          gradle wrapper --gradle-version 8.7
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
@@ -64,25 +64,23 @@ jobs:
           BUILD_NUMBER: ${{ github.run_number }} # Ini kuncinya!
         run: ./gradlew assembleDebug --no-daemon -Pkotlin.incremental=false
 
-      - name: Extract App Version and Setup Metadata
+       - name: Extract App Version and Setup Metadata
         id: metadata
         run: |
           REPO_NAME="${{ github.event.repository.name }}"
+          # Kita pake cara aman buat ambil nomor build langsung dari GitHub
+          BUILD_NUM=${{ github.run_number }}
+          VERSION_NAME="1.0.$BUILD_NUM"
           
-          # Mengambil versionName secara otomatis dari defaultConfig di build.gradle / build.gradle.kts jika ada
-          VERSION_NAME=$(grep -m 1 "versionName" app/build.gradle* 2>/dev/null | tr -d ' "versionName=' || echo "1.0.${{ github.run_number }}")
-          if [ -z "$VERSION_NAME" ]; then
-            VERSION_NAME="1.0.${{ github.run_number }}"
-          fi
-          
+          # Cari APK hasil build
           APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
           
           if [ -f "$APK_PATH" ]; then
+            # Nama file nggak boleh ada karakter aneh (titik dua, dll)
             NEW_NAME="${REPO_NAME}-${VERSION_NAME}-debug.apk"
             cp "$APK_PATH" "$NEW_NAME"
             echo "APK_NAME=$NEW_NAME" >> $GITHUB_ENV
             echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_ENV
-            echo "APK berhasil di-rename menjadi: $NEW_NAME dengan versi $VERSION_NAME"
           else
             echo "File APK tidak ditemukan!"
             exit 1
