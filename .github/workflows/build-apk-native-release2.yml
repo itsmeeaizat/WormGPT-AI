@@ -62,22 +62,35 @@ jobs:
       - name: Build Debug APK with Gradle
         run: ./gradlew assembleDebug --no-daemon -Pkotlin.incremental=false
 
-      - name: Auto-Update Version in Gradle
+      # ... (setelah langkah Build Debug APK)
+
+      - name: Extract App Version and Setup Metadata
+        id: metadata
         run: |
-          # Ganti versionCode
-          sed -i "s/versionCode = [0-9]*/versionCode = ${{ github.run_number }}/g" app/build.gradle.kts
+          REPO_NAME="${{ github.event.repository.name }}"
+          BUILD_NUM=${{ github.run_number }}
+          VERSION_NAME="1.0.$BUILD_NUM"
           
-          # Ganti versionName
-          sed -i "s/versionName = \".*\"/versionName = \"1.0.${{ github.run_number }}\"/g" app/build.gradle.kts
+          # Cari APK hasil build
+          APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
           
-          echo "Versi berhasil diupdate ke 1.0.${{ github.run_number }}"
+          if [ -f "$APK_PATH" ]; then
+            NEW_NAME="${REPO_NAME}-${VERSION_NAME}-debug.apk"
+            cp "$APK_PATH" "$NEW_NAME"
+            echo "APK_NAME=$NEW_NAME" >> $GITHUB_ENV
+            echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_ENV
+            echo "APK_PATH=$NEW_NAME" >> $GITHUB_ENV # Tambahin ini buat jaga-jaga
+          else
+            echo "File APK tidak ditemukan!"
+            exit 1
+          fi
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ github.event.repository.name }}-apk
-          path: ${{ env.APK_NAME }}
-
+          path: ${{ env.APK_NAME }} # Sekarang APK_NAME udah ada isinya!
+          
       - name: Release and Upload APK to GitHub Releases
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.ref_name == 'main'
