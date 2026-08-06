@@ -1,0 +1,113 @@
+name: Build Custom Native APK & Release
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  workflow_dispatch: # Memungkinkan eksekusi manual melalui tombol "Run workflow"
+
+# Menambahkan izin akses secara eksplisit untuk menghindari eror HTTP 403 (Permission Denied)
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Gradle APK and Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 20
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '20'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Generate Gradle Wrapper (Version 9.3.1)
+        run: |
+          gradle wrapper --gradle-version 9.3.1
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Generate Custom Debug Keystore and Copy to Project
+        run: |
+          mkdir -p ~/.android
+          keytool -genkey -v -keystore ~/.android/debug.keystore \
+          -storepass android -alias androiddebugkey -keypass android \
+          -keyalg RSA -keysize 2048 -validity 10000 \
+          -dname "CN=Aizat, O=Personal Developer, C=ID"
+          cp ~/.android/debug.keystore ./debug.keystore
+
+      - name: Rename Package ID
+        run: |
+          NEW_PACKAGE_ID="com.wormgpt.secx1"
+          
+          # Ganti package di build.gradle.kts (app module)
+          sed -i "s/applicationId = \".*\"/applicationId = \"$NEW_PACKAGE_ID\"/g" app/build.gradle.kts
+          
+          # Ganti package di AndroidManifest.xml
+          sed -i "s/package=\".*\"/package=\"$NEW_PACKAGE_ID\"/g" app/src/main/AndroidManifest.xml
+          
+          echo "Package ID berhasil diubah menjadi: $NEW_PACKAGE_ID"
+          
+      - name: Build Debug APK with Gradle
+        run: ./gradlew assembleDebug --no-daemon -Pkotlin.incremental=false
+
+      # ... (setelah langkah Build Debug APK)
+
+      - name: Extract App Version and Setup Metadata
+        id: metadata
+        run: |
+          REPO_NAME="${{ github.event.repository.name }}"
+          BUILD_NUM=${{ github.run_number }}
+          VERSION_NAME="1.0.$BUILD_NUM"
+          
+          # Cari APK hasil build
+          APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          
+          if [ -f "$APK_PATH" ]; then
+            NEW_NAME="${REPO_NAME}-${VERSION_NAME}-debug.apk"
+            cp "$APK_PATH" "$NEW_NAME"
+            echo "APK_NAME=$NEW_NAME" >> $GITHUB_ENV
+            echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_ENV
+            echo "APK_PATH=$NEW_NAME" >> $GITHUB_ENV # Tambahin ini buat jaga-jaga
+          else
+            echo "File APK tidak ditemukan!"
+            exit 1
+          fi
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.event.repository.name }}-apk
+          path: ${{ env.APK_NAME }} # Sekarang APK_NAME udah ada isinya!
+          
+      - name: Release and Upload APK to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.ref_name == 'main'
+        with:
+          files: ${{ env.APK_NAME }}
+          # Otomatis membuat tag berbasis versi project atau tag git yang aktif
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', env.VERSION_NAME) }}
+          name: "${{ github.event.repository.name }} v${{ env.VERSION_NAME }} (Build #${{ github.run_number }})"
+          body: |
+            ### 📱 ${{ github.event.repository.name }} (Android App)
+            * **Developer:** Aizat
+            * **App Version:** v${{ env.VERSION_NAME }}
+            * **Build Number:** ${{ github.run_number }}
+            * **Status:** Stable Release
+            
+            ### ✨ Catatan Versi:
+            - Berhasil di-build otomatis dari repository **${{ github.event.repository.name }}**.
+            - Silakan unduh file APK (`${{ env.APK_NAME }}`) di bawah ini untuk menginstalnya langsung di perangkat Android Anda.
+          draft: false
+          prerelease: false
