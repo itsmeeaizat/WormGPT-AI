@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Emerald Circle Background -->
+    <path
+        android:fillColor="#FF10A37F"
+        android:pathData="M54,4 C26.386,4 4,26.386 4,54 C4,81.614 26.386,104 54,104 C81.614,104 104,81.614 104,54 C104,26.386 81.614,4 54,4 Z" />
+    
+    <!-- White Main Sparkle Star -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M54,22 L59.5,43.5 L81,49 L59.5,54.5 L54,76 L48.5,54.5 L27,49 L48.5,43.5 Z" />
+
+    <!-- Secondary Small Sparkle Top Right -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M78,24 L80,31 L87,33 L80,35 L78,42 L76,35 L69,33 L76,31 Z" />
+
+    <!-- Tertiary Small Sparkle Bottom Left -->
+    <path
+        android:fillColor="#E0FFFFFF"
+        android:pathData="M32,68 L33.5,73 L38.5,74.5 L33.5,76 L32,81 L30.5,76 L25.5,74.5 L30.5,73 Z" />
+</vector>

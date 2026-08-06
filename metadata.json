@@ -1,0 +1,6 @@
+{
+  "name": "Nova AI",
+  "description": "Nova AI — Smart Next-Gen Multi-Provider AI Assistant powered by custom endpoints, Gemini, Groq, and OpenRouter.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

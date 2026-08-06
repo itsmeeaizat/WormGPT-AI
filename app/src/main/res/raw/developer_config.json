@@ -1,0 +1,34 @@
+{
+  "central_gemini_api_key": "",
+  "central_groq_api_key": "",
+  "central_openrouter_api_key": "",
+  "central_mistral_api_key": "",
+  "default_model": "gemini-3.5-flash-lite",
+  "owner_note": "Konfigurasi Pusat Developer - Out-Of-The-Box Ready",
+  "central_custom_models": [
+    {
+      "name": "Gemini 3.5 Flash Lite (Pusat)",
+      "baseUrl": "",
+      "id": "gemini-3.5-flash-lite",
+      "providerType": "Gemini",
+      "apiKey": "",
+      "description": "Google Official Gemini Flash Lite — Respon Super Cepat"
+    },
+    {
+      "name": "Custom OpenAI GPT-4o Mini",
+      "baseUrl": "https://api.openai.com/v1/",
+      "id": "custom-gpt4o-mini",
+      "providerType": "Custom",
+      "apiKey": "",
+      "description": "Model Custom Endpoint OpenAI Kompatibel"
+    },
+    {
+      "name": "Custom Groq Llama 3.3 70B",
+      "baseUrl": "https://api.groq.com/openai/v1/",
+      "id": "custom-llama-3.3-70b",
+      "providerType": "Custom",
+      "apiKey": "",
+      "description": "Model Custom Endpoint Groq Kompatibel"
+    }
+  ]
+}
